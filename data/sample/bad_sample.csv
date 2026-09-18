@@ -1,0 +1,4 @@
+event_id,txid,timestamp,src_ip,dst_ip,src_port,dst_port,input_addresses,output_addresses,input_amounts,output_amounts,fee,script_type,geo_country,asn
+evt_good,tx_good,2026-09-17T10:00:00Z,192.168.1.1,10.0.0.1,5000,8333,addr_a,addr_b,10.5,10.0,0.1,p2pkh,US,AS15169
+evt_bad_port,tx_bad1,2026-09-17T10:05:00Z,192.168.1.2,10.0.0.2,INVALID_PORT,8333,addr_b,addr_d,10.0,9.9,0.1,p2wpkh,CA,AS13335
+evt_bad_time,tx_bad2,INVALID_TIME,192.168.1.3,10.0.0.3,5002,8333,addr_c,addr_e,5.0,4.9,0.1,p2sh,UK,AS12345

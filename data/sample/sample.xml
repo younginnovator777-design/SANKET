@@ -1,0 +1,19 @@
+<transactions>
+  <transaction>
+    <event_id>evt_301</event_id>
+    <txid>tx_004</txid>
+    <timestamp>2026-09-17T12:00:00Z</timestamp>
+    <src_ip>192.168.1.4</src_ip>
+    <dst_ip>10.0.0.4</dst_ip>
+    <src_port>5003</src_port>
+    <dst_port>8333</dst_port>
+    <input_addresses>addr_g</input_addresses>
+    <output_addresses>addr_h|addr_i</output_addresses>
+    <input_amounts>20.0</input_amounts>
+    <output_amounts>15.0|4.9</output_amounts>
+    <fee>0.1</fee>
+    <script_type>p2wpkh</script_type>
+    <geo_country>DE</geo_country>
+    <asn>AS24940</asn>
+  </transaction>
+</transactions>
