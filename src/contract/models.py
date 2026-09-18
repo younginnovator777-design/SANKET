@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
+
 
 class CanonicalTransaction(BaseModel):
     event_id: str = Field(..., description="Unique event identifier")
@@ -28,11 +29,13 @@ class CanonicalTransaction(BaseModel):
             raise ValueError("Amounts must be non-negative")
         return v
 
+
 class QuarantineRecord(BaseModel):
     batch_id: str
     raw_data: str
     error_reason: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 class RunManifest(BaseModel):
     run_id: str
@@ -44,11 +47,13 @@ class RunManifest(BaseModel):
     records_quarantined: int = Field(default=0, ge=0)
     status: str = Field(default="RUNNING")
 
+
 class AddressEdge(BaseModel):
     txid: str
     address: str
     direction: str  # 'INPUT' or 'OUTPUT'
     amount: float = Field(..., ge=0.0)
+
 
 class NetworkObservation(BaseModel):
     event_id: str
@@ -61,12 +66,14 @@ class NetworkObservation(BaseModel):
     geo_country: Optional[str] = None
     asn: Optional[str] = None
 
+
 class DetectorEvidence(BaseModel):
     txid: str
     detector_id: str
     score: float = Field(..., ge=0.0, le=1.0)
     reason_codes: List[str]
     evidence_refs: dict
+
 
 class Alert(BaseModel):
     lead_id: str
@@ -76,48 +83,31 @@ class Alert(BaseModel):
     priority: str
     model_version: str
 
+
 class Case(BaseModel):
     case_id: str
     alert_id: str
     status: str
     notes: Optional[str] = None
 
-class GraphNode(BaseModel):
-    id: str = Field(..., description="Unique node identifier (address, ip, or entity id)")
-    type: str = Field(..., description="Node type, e.g. 'address', 'ip', 'entity'")
-    label: Optional[str] = None
-    risk_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-
-class GraphEdge(BaseModel):
-    source: str = Field(..., description="Source node id")
-    target: str = Field(..., description="Target node id")
-    type: str = Field(..., description="Edge type, e.g. 'sends_to', 'shares_ip'")
-    weight: Optional[float] = None
-    txid: Optional[str] = Field(default=None, description="Originating transaction, if applicable")
-
-class GraphResponse(BaseModel):
-    center_id: str = Field(..., description="Node the graph is centered on")
-    hops: int = Field(..., ge=1, description="Number of hops materialized in this response")
-    nodes: List[GraphNode] = Field(default_factory=list)
-    edges: List[GraphEdge] = Field(default_factory=list)
-
-from typing import Literal
 
 class GraphNode(BaseModel):
-    id: str = Field(..., description="Unique node identifier")
+    id: str = Field(..., description="Unique node identifier (address, ip, txid, entity id)")
     type: Literal["TRANSACTION", "ADDRESS", "IP", "ASN", "COUNTRY", "CANDIDATE_ENTITY"]
     label: Optional[str] = None
     risk_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
+
 class GraphEdge(BaseModel):
-    source: str
-    target: str
+    source: str = Field(..., description="Source node id")
+    target: str = Field(..., description="Target node id")
     type: Literal["sends_to", "receives_from", "shares_ip", "belongs_to_asn", "located_in"]
     weight: Optional[float] = None
-    txid: Optional[str] = None
+    txid: Optional[str] = Field(default=None, description="Originating transaction, if applicable")
+
 
 class GraphResponse(BaseModel):
-    center_id: str
-    hops: int = Field(..., ge=1)
+    center_id: str = Field(..., description="Node the graph is centered on")
+    hops: int = Field(..., ge=1, description="Number of hops materialized in this response")
     nodes: List[GraphNode] = Field(default_factory=list)
     edges: List[GraphEdge] = Field(default_factory=list)

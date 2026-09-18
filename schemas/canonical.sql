@@ -1,6 +1,7 @@
 -- BIT-SHIELD canonical schema
--- Mirrors src/contract/models.py exactly. Do not edit without updating
--- the Pydantic contract and docs/data-contract/canonical-transaction.md together.
+-- Reference SQL schema for the persistent transaction and run-state tables.
+-- Kept in sync with src/contract/models.py by hand; lists and dicts are stored
+-- as JSON-encoded TEXT here.
 
 CREATE TABLE IF NOT EXISTS canonical_transaction (
     event_id            TEXT PRIMARY KEY,
@@ -30,7 +31,7 @@ CREATE TABLE IF NOT EXISTS quarantine_record (
     timestamp      TIMESTAMP NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS run_manifest (
+CREATE TABLE IF NOT EXISTS run_manifests (
     run_id                TEXT PRIMARY KEY,
     source                TEXT NOT NULL,
     started_at             TIMESTAMP NOT NULL,
