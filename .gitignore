@@ -18,3 +18,8 @@ dist/
 *.sqlite
 *.duckdb
 *.wal
+.env
+.env.*
+.DS_Store
+.coverage
+htmlcov/

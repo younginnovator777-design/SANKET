@@ -72,3 +72,22 @@ def test_pipeline_orchestration_durable():
     assert manifest.records_quarantined == 2
     assert os.path.exists("data/canonical/batch_orch_999.parquet")
     assert os.path.exists("data/quarantine/batch_orch_999_quarantine.json")
+
+def test_pipeline_orchestration_json():
+    manifest = run_ingestion_pipeline("data/sample/sample.json", "batch_orch_json_001", source_type="json")
+    assert manifest.records_received == 1
+    assert manifest.records_accepted == 1
+    assert manifest.status == "COMPLETED"
+    assert os.path.exists("data/canonical/batch_orch_json_001.parquet")
+
+def test_pipeline_orchestration_xml():
+    manifest = run_ingestion_pipeline("data/sample/sample.xml", "batch_orch_xml_001", source_type="xml")
+    assert manifest.records_received == 1
+    assert manifest.records_accepted == 1
+    assert manifest.status == "COMPLETED"
+    assert os.path.exists("data/canonical/batch_orch_xml_001.parquet")
+
+def test_pipeline_unsupported_source_type():
+    import pytest
+    with pytest.raises(NotImplementedError):
+        run_ingestion_pipeline("data/sample/sample.csv", "batch_orch_bad_001", source_type="yaml")

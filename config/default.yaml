@@ -1,0 +1,23 @@
+# BIT-SHIELD default configuration (Phase 0)
+# Values here are placeholders reflecting current hardcoded paths in
+# src/pipeline/ingestion_pipeline.py and src/storage/*.
+# Do not wire this into code until a config loader is actually implemented.
+
+paths:
+  data_raw: "data/raw"
+  data_canonical: "data/canonical"
+  data_quarantine: "data/quarantine"
+  data_generated: "data/generated"
+  data_sample: "data/sample"
+  artifacts: "artifacts"
+
+storage:
+  sqlite_metadata_db: "data/canonical/metadata.sqlite"
+  parquet_dir: "data/canonical"
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+
+pipeline:
+  default_batch_prefix: "batch"
