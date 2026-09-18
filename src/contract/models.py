@@ -81,3 +81,43 @@ class Case(BaseModel):
     alert_id: str
     status: str
     notes: Optional[str] = None
+
+class GraphNode(BaseModel):
+    id: str = Field(..., description="Unique node identifier (address, ip, or entity id)")
+    type: str = Field(..., description="Node type, e.g. 'address', 'ip', 'entity'")
+    label: Optional[str] = None
+    risk_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+class GraphEdge(BaseModel):
+    source: str = Field(..., description="Source node id")
+    target: str = Field(..., description="Target node id")
+    type: str = Field(..., description="Edge type, e.g. 'sends_to', 'shares_ip'")
+    weight: Optional[float] = None
+    txid: Optional[str] = Field(default=None, description="Originating transaction, if applicable")
+
+class GraphResponse(BaseModel):
+    center_id: str = Field(..., description="Node the graph is centered on")
+    hops: int = Field(..., ge=1, description="Number of hops materialized in this response")
+    nodes: List[GraphNode] = Field(default_factory=list)
+    edges: List[GraphEdge] = Field(default_factory=list)
+
+from typing import Literal
+
+class GraphNode(BaseModel):
+    id: str = Field(..., description="Unique node identifier")
+    type: Literal["TRANSACTION", "ADDRESS", "IP", "ASN", "COUNTRY", "CANDIDATE_ENTITY"]
+    label: Optional[str] = None
+    risk_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    type: Literal["sends_to", "receives_from", "shares_ip", "belongs_to_asn", "located_in"]
+    weight: Optional[float] = None
+    txid: Optional[str] = None
+
+class GraphResponse(BaseModel):
+    center_id: str
+    hops: int = Field(..., ge=1)
+    nodes: List[GraphNode] = Field(default_factory=list)
+    edges: List[GraphEdge] = Field(default_factory=list)

@@ -91,3 +91,29 @@ def test_pipeline_unsupported_source_type():
     import pytest
     with pytest.raises(NotImplementedError):
         run_ingestion_pipeline("data/sample/sample.csv", "batch_orch_bad_001", source_type="yaml")
+
+def test_graph_contract_shapes():
+    from src.contract.models import GraphNode, GraphEdge, GraphResponse
+
+    node_a = GraphNode(id="addr_1", type="address", risk_score=0.7)
+    node_b = GraphNode(id="ip_1", type="ip")
+    edge = GraphEdge(source="addr_1", target="ip_1", type="shares_ip", txid="tx_001")
+
+    graph = GraphResponse(center_id="addr_1", hops=2, nodes=[node_a, node_b], edges=[edge])
+
+    assert graph.center_id == "addr_1"
+    assert len(graph.nodes) == 2
+    assert graph.edges[0].source == "addr_1"
+
+def test_graph_contract_shapes():
+    from src.contract.models import GraphNode, GraphEdge, GraphResponse
+
+    node_a = GraphNode(id="addr_1", type="ADDRESS", risk_score=0.7)
+    node_b = GraphNode(id="ip_1", type="IP")
+    edge = GraphEdge(source="addr_1", target="ip_1", type="shares_ip", txid="tx_001")
+
+    graph = GraphResponse(center_id="addr_1", hops=2, nodes=[node_a, node_b], edges=[edge])
+
+    assert graph.center_id == "addr_1"
+    assert len(graph.nodes) == 2
+    assert graph.edges[0].source == "addr_1"
