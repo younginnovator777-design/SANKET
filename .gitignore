@@ -8,6 +8,7 @@ data/quarantine/*
 data/generated/*
 artifacts/*
 !data/**/.gitkeep
+!data/generated/README.md
 !artifacts/**/.gitkeep
 
 # Standard build/test ignores
