@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { TopHeader } from '@/components/TopHeader';
 
@@ -11,8 +12,17 @@ interface AppShellProps {
 /**
  * The main application shell — sidebar + top header + content area.
  * This wraps all pages in the (app) route group.
+ * The landing page (pathname === '/') renders without the shell chrome.
  */
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
+  const isLandingPage = pathname === '/';
+
+  // Landing page renders full-screen without sidebar/header
+  if (isLandingPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
