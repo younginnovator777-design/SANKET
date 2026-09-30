@@ -1,15 +1,23 @@
-﻿// ============================================================
+// ============================================================
 // SANKET — Typed API Client
 // Wraps all backend endpoints (Tasks 8A/8B).
 // Reads NEXT_PUBLIC_API_BASE_URL; uses native fetch.
 // ============================================================
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`;
-  const res = await fetch(url, { ...init });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init });
+  } catch {
+    throw new ApiError(
+      0,
+      `Backend connection failure: Unable to reach SANKET API at ${url}. Ensure the backend is running.`
+    );
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try { const b = await res.json(); detail = b?.detail ?? detail; } catch { /* ignore */ }
