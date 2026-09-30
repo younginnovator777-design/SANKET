@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense, useEffect } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -38,26 +38,8 @@ import {
   LoadingState,
   Tooltip,
 } from '@/components/ui';
-import { getAlerts, getTransaction, ApiAlert, ApiTransactionDetail } from '@/lib/api';
-import type { TransactionRecord, RiskLevel } from '@/types';
-
-// Build a lightweight TransactionRecord from alert data for the list view.
-function alertToTx(a: ApiAlert): TransactionRecord {
-  return {
-    txid: a.transaction_id,
-    timestamp: new Date().toISOString(), // placeholder until detail loaded
-    block_height: 0,
-    value_btc: 0,
-    fee_btc: 0,
-    inputs_count: 0,
-    outputs_count: 0,
-    risk_score: a.risk_score,
-    risk_level: a.risk_level,
-    confidence: a.confidence_score,
-    triggered_detectors: a.triggered_detectors,
-    status: a.risk_level === 'LOW' ? 'confirmed' : 'flagged',
-  };
-}
+import { mockTransactions, mockAlerts, mockRuns } from '@/data/mock';
+import { TransactionRecord, RiskLevel } from '@/types';
 
 type RiskFilterOption = 'ALL' | 'CRITICAL' | 'HIGH+' | 'MEDIUM+' | 'LOW';
 
@@ -70,98 +52,76 @@ function TransactionsContent() {
   const [selectedDetector, setSelectedDetector] = useState<string>('ALL');
   const [selectedAsn, setSelectedAsn] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [selectedTx, setSelectedTx] = useState<TransactionRecord | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<TransactionRecord | null>(() => {
+    if (initialQuery) {
+      const match = mockTransactions.find(
+        (t) => t.txid.toLowerCase().includes(initialQuery.toLowerCase())
+      );
+      return match || null;
+    }
+    return null;
+  });
   const [copiedTx, setCopiedTx] = useState(false);
 
-  // All transaction rows from alerts
-  const [allTransactions, setAllTransactions] = useState<TransactionRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const activeRun = mockRuns[0];
 
-  useEffect(() => {
-    getAlerts()
-      .then((res) => {
-        const txs = res.alerts.map(alertToTx);
-        setAllTransactions(txs);
-        // Auto-select if URL param matches
-        if (initialQuery) {
-          const match = txs.find((t) => t.txid.toLowerCase().includes(initialQuery.toLowerCase()));
-          if (match) setSelectedTx(match);
-        }
-      })
-      .catch((err) => setFetchError(String(err)))
-      .finally(() => setLoading(false));
-  }, [initialQuery]);
-
-  const handleSelectTx = async (tx: TransactionRecord) => {
-    setSelectedTx(tx);
-    setDetailLoading(true);
-    try {
-      const detail: ApiTransactionDetail = await getTransaction(tx.txid);
-      const ct = detail.canonical_transaction;
-      if (ct) {
-        setSelectedTx(prev => prev ? {
-          ...prev,
-          timestamp: ct.timestamp ?? prev.timestamp,
-          value_btc: (ct.output_amounts ?? []).reduce((a, b) => a + b, 0),
-          fee_btc: ct.fee ?? prev.fee_btc,
-          inputs_count: (ct.input_addresses ?? []).length,
-          outputs_count: (ct.output_addresses ?? []).length,
-          observed_ip: ct.src_ip ?? undefined,
-          observed_asn: ct.asn ?? undefined,
-        } : null);
-      }
-    } catch { /* keep stub data */ }
-    finally { setDetailLoading(false); }
-  };
-
-  const activeRun = { run_id: '—', dataset_name: '—', scoring_version: '—' };
-
-  // Derive unique detectors & ASNs from real transactions
+  // Derive unique detectors & ASNs from mockTransactions
   const allDetectors = useMemo(() => {
     const set = new Set<string>();
-    allTransactions.forEach((tx) => { tx.triggered_detectors.forEach((d) => set.add(d)); });
+    mockTransactions.forEach((tx) => {
+      tx.triggered_detectors.forEach((d) => set.add(d));
+    });
     return Array.from(set);
-  }, [allTransactions]);
+  }, []);
 
   const allAsns = useMemo(() => {
     const set = new Set<string>();
-    allTransactions.forEach((tx) => { if (tx.observed_asn) set.add(tx.observed_asn); });
+    mockTransactions.forEach((tx) => {
+      if (tx.observed_asn) set.add(tx.observed_asn);
+    });
     return Array.from(set);
-  }, [allTransactions]);
+  }, []);
 
   // Filter transactions
   const filteredTransactions = useMemo(() => {
-    return allTransactions.filter((tx) => {
+    return mockTransactions.filter((tx) => {
+      // Risk filter
       if (selectedRiskFilter === 'CRITICAL' && tx.risk_level !== 'CRITICAL') return false;
       if (selectedRiskFilter === 'HIGH+' && tx.risk_level !== 'CRITICAL' && tx.risk_level !== 'HIGH') return false;
       if (selectedRiskFilter === 'MEDIUM+' && tx.risk_level === 'LOW') return false;
       if (selectedRiskFilter === 'LOW' && tx.risk_level !== 'LOW') return false;
+
+      // Detector filter
       if (selectedDetector !== 'ALL' && !tx.triggered_detectors.includes(selectedDetector)) return false;
+
+      // ASN filter
       if (selectedAsn !== 'ALL' && tx.observed_asn !== selectedAsn) return false;
+
+      // Status filter
       if (selectedStatus !== 'ALL' && tx.status !== selectedStatus) return false;
+
+      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        return tx.txid.toLowerCase().includes(q) ||
-          (tx.observed_ip?.toLowerCase().includes(q) || false) ||
-          (tx.observed_asn?.toLowerCase().includes(q) || false) ||
-          tx.triggered_detectors.some((d) => d.toLowerCase().includes(q));
+        const matchTxid = tx.txid.toLowerCase().includes(q);
+        const matchIp = tx.observed_ip?.toLowerCase().includes(q) || false;
+        const matchAsn = tx.observed_asn?.toLowerCase().includes(q) || false;
+        const matchBlock = tx.block_height.toString().includes(q);
+        const matchDetector = tx.triggered_detectors.some((d) => d.toLowerCase().includes(q));
+        if (!matchTxid && !matchIp && !matchAsn && !matchBlock && !matchDetector) return false;
       }
+
       return true;
     });
-  }, [allTransactions, searchQuery, selectedRiskFilter, selectedDetector, selectedAsn, selectedStatus]);
+  }, [searchQuery, selectedRiskFilter, selectedDetector, selectedAsn, selectedStatus]);
 
   // Forensic summary metrics
-  const totalTxs = allTransactions.length;
-  const flaggedCount = allTransactions.filter((tx) => tx.status === 'flagged' || tx.status === 'anomalous').length;
-  const totalVolumeBtc = allTransactions.reduce((acc, tx) => acc + tx.value_btc, 0);
+  const totalTxs = mockTransactions.length;
+  const flaggedCount = mockTransactions.filter((tx) => tx.status === 'flagged' || tx.status === 'anomalous').length;
+  const totalVolumeBtc = mockTransactions.reduce((acc, tx) => acc + tx.value_btc, 0);
   const avgConfidence = totalTxs > 0
-    ? (allTransactions.reduce((acc, tx) => acc + tx.confidence, 0) / totalTxs) * 100
+    ? (mockTransactions.reduce((acc, tx) => acc + tx.confidence, 0) / totalTxs) * 100
     : 0;
-
-  if (loading) return <div className="p-8"><LoadingState message="Loading transactions from backend…" /></div>;
-  if (fetchError) return <div className="p-8 text-xs font-mono text-[var(--risk-critical)]">Backend error: {fetchError}</div>;
 
   const handleCopyTx = (txid: string) => {
     navigator.clipboard?.writeText(txid);
@@ -411,7 +371,7 @@ function TransactionsContent() {
 
             {/* Active count */}
             <div className="text-[11px] font-mono text-[var(--text-tertiary)] pl-2 border-l border-[var(--border-subtle)]">
-              {filteredTransactions.length} OF {allTransactions.length} TXS
+              {filteredTransactions.length} OF {mockTransactions.length} TXS
             </div>
           </div>
         </div>

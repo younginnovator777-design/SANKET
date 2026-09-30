@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   ShieldAlert,
@@ -35,29 +35,10 @@ import {
   DataTable,
   Column,
 } from '@/components/ui';
-import { getAlerts, ApiAlert } from '@/lib/api';
-import type { Alert, RiskLevel } from '@/types';
-import { LoadingState, EmptyState as UIEmptyState } from '@/components/ui';
+import { mockAlerts, mockRuns, mockInvestigation } from '@/data/mock';
+import { Alert, RiskLevel } from '@/types';
 
 type RiskFilterOption = 'ALL' | 'MEDIUM+' | 'HIGH+' | 'CRITICAL';
-
-function toAlert(a: ApiAlert): Alert {
-  return {
-    alert_id: a.alert_id,
-    transaction_id: a.transaction_id,
-    rank: a.rank,
-    risk_score: a.risk_score,
-    confidence_score: a.confidence_score,
-    risk_level: a.risk_level,
-    priority_score: a.priority_score,
-    triggered_detectors: a.triggered_detectors,
-    independent_signal_count: a.independent_signal_count,
-    evidence_items: a.evidence_items,
-    evidence_categories: a.evidence_categories,
-    component_scores: a.component_scores,
-    scoring_version: a.scoring_version,
-  };
-}
 
 export default function AlertsPage() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,30 +46,25 @@ export default function AlertsPage() {
   const [selectedDetector, setSelectedDetector] = useState<string>('ALL');
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [copiedTx, setCopiedTx] = useState(false);
-  const [allAlerts, setAllAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    getAlerts()
-      .then((res) => setAllAlerts(res.alerts.map(toAlert)))
-      .catch((err) => setFetchError(String(err)))
-      .finally(() => setLoading(false));
-  }, []);
+  const activeRun = mockRuns[0];
 
-  const activeRun = { run_id: '—', dataset_name: '—', scoring_version: '—' };
-
-  // Derive unique detectors from all alerts
+  // Derive unique detectors from all mockAlerts
   const allDetectors = Array.from(
-    new Set(allAlerts.flatMap((a) => a.triggered_detectors))
+    new Set(mockAlerts.flatMap((a) => a.triggered_detectors))
   );
 
   // Filter alerts according to requirements while preserving authoritative backend rank order
-  const filteredAlerts = allAlerts.filter((alert) => {
+  const filteredAlerts = mockAlerts.filter((alert) => {
+    // Risk tier filter
     if (selectedRiskFilter === 'CRITICAL' && alert.risk_level !== 'CRITICAL') return false;
     if (selectedRiskFilter === 'HIGH+' && alert.risk_level !== 'CRITICAL' && alert.risk_level !== 'HIGH') return false;
     if (selectedRiskFilter === 'MEDIUM+' && alert.risk_level === 'LOW') return false;
+
+    // Detector filter
     if (selectedDetector !== 'ALL' && !alert.triggered_detectors.includes(selectedDetector)) return false;
+
+    // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (
@@ -100,18 +76,15 @@ export default function AlertsPage() {
     return true;
   });
 
-  if (loading) return <div className="p-8"><LoadingState message="Loading alerts from backend…" /></div>;
-  if (fetchError) return <div className="p-8 text-xs font-mono text-[var(--risk-critical)]">Backend error: {fetchError}</div>;
-
-  // Summary row metrics computed from real data
-  const totalLeads = allAlerts.length;
-  const highCriticalCount = allAlerts.filter(
+  // Summary row metrics computed strictly from mock data
+  const totalLeads = mockAlerts.length;
+  const highCriticalCount = mockAlerts.filter(
     (a) => a.risk_level === 'CRITICAL' || a.risk_level === 'HIGH'
   ).length;
-  const mediumPlusCount = allAlerts.filter((a) => a.risk_level !== 'LOW').length;
+  const mediumPlusCount = mockAlerts.filter((a) => a.risk_level !== 'LOW').length;
   const avgConfidence =
-    allAlerts.length > 0
-      ? (allAlerts.reduce((acc, a) => acc + a.confidence_score, 0) / allAlerts.length) * 100
+    mockAlerts.length > 0
+      ? (mockAlerts.reduce((acc, a) => acc + a.confidence_score, 0) / mockAlerts.length) * 100
       : 0;
 
   const handleCopyTx = (txid: string) => {
@@ -354,7 +327,7 @@ export default function AlertsPage() {
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-tertiary)] px-1">
-              <span>SHOWING {filteredAlerts.length} OF {allAlerts.length} RANKED LEADS</span>
+              <span>SHOWING {filteredAlerts.length} OF {mockAlerts.length} RANKED LEADS</span>
               <span>CLICK ANY ROW TO OPEN INVESTIGATION DOSSIER</span>
             </div>
 

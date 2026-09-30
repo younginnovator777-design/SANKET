@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   History,
@@ -33,22 +33,8 @@ import {
   Button,
   Badge,
 } from '@/components/ui';
-import { getLatestRun, ApiLatestRun, ApiError } from '@/lib/api';
+import { mockRuns } from '@/data/mock';
 import { AnalysisRun } from '@/types';
-
-/** Adapt the single ApiLatestRun → AnalysisRun used by the existing table/drawer UI. */
-function adaptLatestRun(r: ApiLatestRun): AnalysisRun {
-  return {
-    run_id: r.run_id,
-    dataset_name: (r.dataset_metadata?.name as string) || r.run_id,
-    status: 'completed',
-    started_at: new Date().toISOString(),
-    completed_at: new Date().toISOString(),
-    transaction_count: r.record_count,
-    alert_count: r.alert_count,
-    scoring_version: r.pipeline_version,
-  };
-}
 
 // Helper to format duration between ISO timestamps
 function calculateDuration(startStr: string, endStr?: string): string {
@@ -84,25 +70,13 @@ export default function RunsPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'completed' | 'processing' | 'failed'>('ALL');
   const [selectedRun, setSelectedRun] = useState<AnalysisRun | null>(null);
 
-  const [runs, setRuns] = useState<AnalysisRun[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getLatestRun()
-      .then((r) => setRuns([adaptLatestRun(r)]))
-      .catch((err) => {
-        const detail = err instanceof ApiError && err.status === 404
-          ? null // no run yet — show empty state, not an error
-          : (err instanceof ApiError ? err.detail : String(err));
-        setFetchError(detail);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
   const filteredRuns = useMemo(() => {
-    return runs.filter((run) => {
-      if (statusFilter !== 'ALL' && run.status !== statusFilter) return false;
+    return mockRuns.filter((run) => {
+      // Status filter
+      if (statusFilter !== 'ALL' && run.status !== statusFilter) {
+        return false;
+      }
+      // Search filter
       if (search.trim()) {
         const q = search.toLowerCase();
         return (
@@ -113,26 +87,15 @@ export default function RunsPage() {
       }
       return true;
     });
-  }, [runs, search, statusFilter]);
+  }, [search, statusFilter]);
 
-  const totalTransactions = runs.reduce((acc, r) => acc + (r.transaction_count || 0), 0);
-  const totalLeads = runs.reduce((acc, r) => acc + (r.alert_count || 0), 0);
+  const totalTransactions = useMemo(() => {
+    return mockRuns.reduce((acc, r) => acc + (r.transaction_count || 0), 0);
+  }, []);
 
-  if (loading) return (
-    <PageContainer title="RUN HISTORY" description="Offline analysis runs and execution history." tag="AUDIT TRAIL" icon={<History size={18} />}>
-      <div className="p-8 flex items-center justify-center">
-        <span className="text-xs font-mono text-[var(--text-tertiary)] animate-pulse">Loading run history from backend…</span>
-      </div>
-    </PageContainer>
-  );
-
-  if (fetchError) return (
-    <PageContainer title="RUN HISTORY" description="Offline analysis runs and execution history." tag="AUDIT TRAIL" icon={<History size={18} />}>
-      <div className="p-8 text-xs font-mono text-[var(--risk-critical)]">
-        Backend error: {fetchError}
-      </div>
-    </PageContainer>
-  );
+  const totalLeads = useMemo(() => {
+    return mockRuns.reduce((acc, r) => acc + (r.alert_count || 0), 0);
+  }, []);
 
   return (
     <PageContainer
@@ -164,7 +127,7 @@ export default function RunsPage() {
               <History size={14} className="text-[var(--accent-primary)]" />
             </div>
             <div className="text-2xl font-bold font-mono text-[var(--text-primary)]">
-              {runs.length}
+              {mockRuns.length}
             </div>
             <div className="text-[11px] font-mono text-[var(--text-secondary)] mt-1">
               Offline batches processed
@@ -239,7 +202,7 @@ export default function RunsPage() {
           </div>
 
           <div className="text-xs font-mono text-[var(--text-tertiary)] shrink-0 hidden lg:block">
-            {filteredRuns.length} OF {runs.length} RUNS
+            {filteredRuns.length} OF {mockRuns.length} RUNS
           </div>
         </div>
 

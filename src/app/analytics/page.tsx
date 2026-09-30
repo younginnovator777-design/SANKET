@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   BarChart3,
@@ -30,18 +30,10 @@ import {
   Button,
   RiskBadge,
 } from '@/components/ui';
-import { getLatestRun, ApiLatestRun } from '@/lib/api';
+import { mockRuns, mockAlerts, mockTransactions } from '@/data/mock';
 
 export default function AnalyticsPage() {
-  const [latestRun, setLatestRun] = useState<ApiLatestRun | null>(null);
-
-  useEffect(() => {
-    getLatestRun().then(setLatestRun).catch(() => {});
-  }, []);
-
-  const activeRunId = latestRun?.run_id ?? '—';
-  const activeDatasetName = (latestRun?.dataset_metadata?.name as string) ?? '—';
-  const activeScoringVersion = latestRun?.pipeline_version ?? '—';
+  const activeRun = mockRuns[0];
 
   // Detector family inventories
   const detectorFamilies = [
@@ -119,17 +111,17 @@ export default function AnalyticsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <div>
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">ACTIVE RUN:</span>{' '}
-              <span className="font-semibold text-[var(--accent-primary-light)]">{activeRunId}</span>
+              <span className="font-semibold text-[var(--accent-primary-light)]">{activeRun.run_id}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div>
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">DATASET:</span>{' '}
-              <span className="text-[var(--text-primary)] font-medium">{activeDatasetName}</span>
+              <span className="text-[var(--text-primary)] font-medium">{activeRun.dataset_name}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div>
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">STATUS:</span>{' '}
-              <span className="text-[var(--text-secondary)]">COMPLETED ({activeScoringVersion})</span>
+              <span className="text-[var(--text-secondary)]">COMPLETED ({activeRun.scoring_version})</span>
             </div>
           </div>
 

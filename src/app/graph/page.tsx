@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -37,10 +37,11 @@ import {
   RiskBadge,
   IconButton,
   SearchInput,
+  FilterButton,
   LoadingState,
+  EmptyState,
 } from '@/components/ui';
-import { getGraph, getLatestRun, ApiLatestRun, ApiError } from '@/lib/api';
-import { adaptGraphResponse } from '@/lib/adapters/graphAdapter';
+import { mockRuns, mockAlerts, mockTransactions, mockCandidateEntities } from '@/data/mock';
 import { RiskLevel } from '@/types';
 
 // ============================================================
@@ -59,9 +60,7 @@ export type ForensicEdgeType =
   | 'INPUT_TO'
   | 'OUTPUT_TO'
   | 'OBSERVED_WITH'
-  | 'SAME_IP'
   | 'SAME_ASN'
-  | 'TEMPORALLY_ASSOCIATED'
   | 'CANDIDATE_SAME_ENTITY';
 
 export interface ForensicNode {
@@ -94,21 +93,379 @@ export interface ForensicEdge {
   is_heuristic?: boolean;
 }
 
+const FORENSIC_GRAPH_NODES: ForensicNode[] = [
+  {
+    id: 'tx_8f3a2b1c',
+    label: 'tx_8f3a2b1c...',
+    sublabel: 'Block #831204 · 48.75 BTC',
+    type: 'TRANSACTION',
+    risk: 'CRITICAL',
+    risk_score: 0.92,
+    x: 360,
+    y: 190,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 5,
+      weighted_degree: '48.75 BTC',
+      component_size: 10,
+      local_density: '0.74',
+      unique_counterparties: 4,
+    },
+    details: {
+      'TXID Hash': '8f3a2b1c9d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a',
+      'Transacted Value': '48.7500 BTC',
+      'Mining Fee': '0.00042 BTC',
+      'Block Height': '#831204',
+      'Vectors': '4 inputs · 23 outputs',
+      'Anomaly Detectors': 'Temporal Burst, Fan-Out, Value Layering',
+    },
+    evidence_snippets: [
+      'Rapid output succession within 12-minute window (confidence 91%)',
+      'Fan-out topology to 23 unique downstream addresses (confidence 88%)',
+      'Value splitting matching layering heuristic profile (confidence 85%)',
+    ],
+  },
+  {
+    id: 'tx_1a2b3c4d',
+    label: 'tx_1a2b3c4d...',
+    sublabel: 'Block #831198 · 12.00 BTC',
+    type: 'TRANSACTION',
+    risk: 'HIGH',
+    risk_score: 0.78,
+    x: 640,
+    y: 110,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 2,
+      weighted_degree: '12.00 BTC',
+      component_size: 10,
+      local_density: '0.52',
+      unique_counterparties: 2,
+    },
+    details: {
+      'TXID Hash': '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b',
+      'Transacted Value': '12.0000 BTC',
+      'Mining Fee': '0.00018 BTC',
+      'Block Height': '#831198',
+      'Vectors': '1 input · 2 outputs',
+      'Anomaly Detectors': 'Peel-Chain, Round-Amount',
+    },
+    evidence_snippets: [
+      'Sequential peel chain continuation over 8 consecutive hops',
+      'Round transaction amount matching structuring profile',
+    ],
+  },
+  {
+    id: 'addr_1a2b3c',
+    label: '1A1zP1...vfNa',
+    sublabel: 'Input Vector #1 · 14.20 BTC',
+    type: 'ADDRESS',
+    risk: 'MEDIUM',
+    risk_score: 0.54,
+    x: 160,
+    y: 130,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 2,
+      weighted_degree: '14.20 BTC',
+      component_size: 10,
+      local_density: '0.65',
+      unique_counterparties: 2,
+    },
+    details: {
+      'Address Hash': '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+      'Total Received': '14.2000 BTC',
+      'Co-spend Vector': 'Input #0 in Block 831204',
+      'Candidate Cluster': 'ENT-CLUSTER-84-ALPHA',
+    },
+    evidence_snippets: [
+      'Multi-input co-spending observed with 3 other input vectors',
+    ],
+  },
+  {
+    id: 'addr_3j98t1',
+    label: '3J98t1...WNLy',
+    sublabel: 'Input Vector #2 · 34.55 BTC',
+    type: 'ADDRESS',
+    risk: 'LOW',
+    risk_score: 0.22,
+    x: 160,
+    y: 250,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 2,
+      weighted_degree: '34.55 BTC',
+      component_size: 10,
+      local_density: '0.65',
+      unique_counterparties: 2,
+    },
+    details: {
+      'Address Hash': '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy',
+      'Total Received': '34.5500 BTC',
+      'Co-spend Vector': 'Input #1 in Block 831204',
+      'Candidate Cluster': 'ENT-CLUSTER-84-ALPHA',
+    },
+    evidence_snippets: [
+      'Multi-input co-spending observed with 3 other input vectors',
+    ],
+  },
+  {
+    id: 'ent_cluster_84',
+    label: 'CLUSTER-84-ALPHA',
+    sublabel: 'Heuristic Cluster · 23 vectors',
+    type: 'CANDIDATE_ENTITY',
+    risk: 'CRITICAL',
+    risk_score: 0.89,
+    x: 80,
+    y: 390,
+    provenance: 'HEURISTIC CANDIDATE GROUPING',
+    metrics: {
+      degree: 3,
+      weighted_degree: '148.50 BTC',
+      component_size: 10,
+      local_density: '0.82',
+      unique_counterparties: 23,
+    },
+    details: {
+      'Entity ID': 'ENT-CLUSTER-84-ALPHA',
+      'Heuristic Rule': 'Common-Input-Ownership + Change-Address',
+      'Member Addresses': '23 grouped address vectors',
+      'Aggregated Volume': '148.50 BTC',
+      'Associated Alerts': '7 priority leads',
+      'Legal Status': 'HEURISTIC ONLY · OWNERSHIP NOT ESTABLISHED',
+    },
+    evidence_snippets: [
+      'Co-spending observed across 14 input vectors in block 831204',
+      'Consistent non-standard locktime timestamp patterning',
+      'Identical fee-rate distribution across 6 sequential bursts',
+    ],
+  },
+  {
+    id: 'addr_bc1qxy',
+    label: 'bc1qxy...0wlh',
+    sublabel: 'Peel Target · 32.10 BTC',
+    type: 'ADDRESS',
+    risk: 'HIGH',
+    risk_score: 0.81,
+    x: 520,
+    y: 110,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 2,
+      weighted_degree: '32.10 BTC',
+      component_size: 10,
+      local_density: '0.60',
+      unique_counterparties: 2,
+    },
+    details: {
+      'Address Hash': 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
+      'Total Received': '32.1000 BTC',
+      'Role': 'Peel-Chain Intermediate Hop',
+      'Next Hop': 'tx_1a2b3c4d (12.00 BTC)',
+    },
+    evidence_snippets: [
+      'Forward transfer observed 3 blocks later in block 831198',
+    ],
+  },
+  {
+    id: 'addr_bc1qar',
+    label: 'bc1qar...5mdq',
+    sublabel: 'Change Output · 16.65 BTC',
+    type: 'ADDRESS',
+    risk: 'LOW',
+    risk_score: 0.18,
+    x: 520,
+    y: 270,
+    provenance: 'OBSERVED TRANSACTION DATA',
+    metrics: {
+      degree: 2,
+      weighted_degree: '16.65 BTC',
+      component_size: 10,
+      local_density: '0.45',
+      unique_counterparties: 2,
+    },
+    details: {
+      'Address Hash': 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
+      'Total Received': '16.6500 BTC',
+      'Role': 'Candidate Change Address',
+      'Candidate Cluster': 'ENT-CLUSTER-84-ALPHA',
+    },
+    evidence_snippets: [
+      'Change address heuristic match: single key-type continuation',
+    ],
+  },
+  {
+    id: 'ip_198_51',
+    label: '198.51.100.42',
+    sublabel: 'Broadcast Peer Node',
+    type: 'IP',
+    risk: 'LOW',
+    risk_score: 0.15,
+    x: 360,
+    y: 350,
+    provenance: 'NETWORK TELEMETRY OBSERVATION',
+    metrics: {
+      degree: 3,
+      component_size: 10,
+      local_density: '0.40',
+      unique_counterparties: 3,
+    },
+    details: {
+      'IP Address': '198.51.100.42',
+      'Autonomous System': 'AS13335 (Cloudflare Lineage)',
+      'Telemetry Time': '2024-03-15 14:23:00 UTC',
+      'Note': 'Observed peer propagation telemetry; does not imply sender identity.',
+    },
+    evidence_snippets: [
+      'First broadcast announcement captured at canonical node ingestion',
+    ],
+  },
+  {
+    id: 'asn_13335',
+    label: 'AS13335',
+    sublabel: 'Cloudflare / Routing BGP',
+    type: 'ASN',
+    risk: 'LOW',
+    risk_score: 0.10,
+    x: 540,
+    y: 380,
+    provenance: 'NETWORK TELEMETRY OBSERVATION',
+    metrics: {
+      degree: 1,
+      component_size: 10,
+      local_density: '0.20',
+      unique_counterparties: 1,
+    },
+    details: {
+      'ASN Number': 'AS13335',
+      'Organization': 'Cloudflare Inc. / Routing Lineage',
+      'Peer Type': 'BGP Transit / Proxy',
+    },
+  },
+  {
+    id: 'country_us',
+    label: 'United States (US)',
+    sublabel: 'GeoIP Region',
+    type: 'COUNTRY',
+    risk: 'LOW',
+    risk_score: 0.05,
+    x: 230,
+    y: 410,
+    provenance: 'NETWORK TELEMETRY OBSERVATION',
+    metrics: {
+      degree: 1,
+      component_size: 10,
+      local_density: '0.20',
+      unique_counterparties: 1,
+    },
+    details: {
+      'Country Code': 'US',
+      'Region': 'North America',
+      'Source': 'Offline MaxMind GeoIP Database',
+    },
+  },
+];
+
+const FORENSIC_GRAPH_EDGES: ForensicEdge[] = [
+  {
+    id: 'e1',
+    source: 'addr_1a2b3c',
+    target: 'tx_8f3a2b1c',
+    label: '14.20 BTC',
+    type: 'INPUT_TO',
+  },
+  {
+    id: 'e2',
+    source: 'addr_3j98t1',
+    target: 'tx_8f3a2b1c',
+    label: '34.55 BTC',
+    type: 'INPUT_TO',
+  },
+  {
+    id: 'e3',
+    source: 'tx_8f3a2b1c',
+    target: 'addr_bc1qxy',
+    label: '32.10 BTC',
+    type: 'OUTPUT_TO',
+  },
+  {
+    id: 'e4',
+    source: 'tx_8f3a2b1c',
+    target: 'addr_bc1qar',
+    label: '16.65 BTC',
+    type: 'OUTPUT_TO',
+  },
+  {
+    id: 'e5',
+    source: 'addr_bc1qxy',
+    target: 'tx_1a2b3c4d',
+    label: '12.00 BTC (Hop 1)',
+    type: 'INPUT_TO',
+  },
+  {
+    id: 'e6',
+    source: 'ent_cluster_84',
+    target: 'addr_1a2b3c',
+    label: 'Heuristic Common-Input',
+    type: 'CANDIDATE_SAME_ENTITY',
+    is_heuristic: true,
+  },
+  {
+    id: 'e7',
+    source: 'ent_cluster_84',
+    target: 'addr_3j98t1',
+    label: 'Heuristic Common-Input',
+    type: 'CANDIDATE_SAME_ENTITY',
+    is_heuristic: true,
+  },
+  {
+    id: 'e8',
+    source: 'ent_cluster_84',
+    target: 'addr_bc1qar',
+    label: 'Heuristic Change-Addr',
+    type: 'CANDIDATE_SAME_ENTITY',
+    is_heuristic: true,
+  },
+  {
+    id: 'e9',
+    source: 'tx_8f3a2b1c',
+    target: 'ip_198_51',
+    label: 'Observed Broadcast',
+    type: 'OBSERVED_WITH',
+  },
+  {
+    id: 'e10',
+    source: 'ip_198_51',
+    target: 'asn_13335',
+    label: 'BGP Route AS13335',
+    type: 'SAME_ASN',
+  },
+  {
+    id: 'e11',
+    source: 'ip_198_51',
+    target: 'country_us',
+    label: 'GeoIP Location',
+    type: 'OBSERVED_WITH',
+  },
+];
 
 function GraphWorkspaceContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('txid') || searchParams.get('entity') || searchParams.get('node') || '';
 
-  // ── Graph data state ────────────────────────────────────────────────────
-  const [graphNodes, setGraphNodes] = useState<ForensicNode[]>([]);
-  const [graphEdges, setGraphEdges] = useState<ForensicEdge[]>([]);
-  const [loadingGraph, setLoadingGraph] = useState(false);
-  const [graphError, setGraphError] = useState<string | null>(null);
-  const [txidInput, setTxidInput] = useState(initialQuery);
-  const [latestRun, setLatestRun] = useState<ApiLatestRun | null>(null);
+  // Find initial matching node
+  const initialNodeId = useMemo(() => {
+    if (!initialQuery) return 'tx_8f3a2b1c';
+    const match = FORENSIC_GRAPH_NODES.find(
+      (n) =>
+        n.id.toLowerCase().includes(initialQuery.toLowerCase()) ||
+        n.label.toLowerCase().includes(initialQuery.toLowerCase()) ||
+        (n.details && Object.values(n.details).some((v) => v.toLowerCase().includes(initialQuery.toLowerCase())))
+    );
+    return match ? match.id : 'tx_8f3a2b1c';
+  }, [initialQuery]);
 
-  // ── Panel / canvas interaction state ───────────────────────────────────
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(initialNodeId);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -119,56 +476,19 @@ function GraphWorkspaceContent() {
   const [copiedId, setCopiedId] = useState(false);
   const [focusNeighborhoodOnly, setFocusNeighborhoodOnly] = useState(false);
 
-  // ── Fetch latest run for header metadata ──────────────────────────────
-  useEffect(() => {
-    getLatestRun().then(setLatestRun).catch(() => {});
-  }, []);
-
-  // ── Load graph from API ───────────────────────────────────────────────
-  const loadGraph = useCallback(async (txid: string) => {
-    if (!txid.trim()) return;
-    setLoadingGraph(true);
-    setGraphError(null);
-    setGraphNodes([]);
-    setGraphEdges([]);
-    try {
-      const response = await getGraph(txid.trim());
-      const adapted = adaptGraphResponse(response);
-      setGraphNodes(adapted.nodes);
-      setGraphEdges(adapted.edges);
-      setSelectedNodeId(adapted.nodes[0]?.id ?? '');
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.detail : String(err);
-      setGraphError(msg);
-    } finally {
-      setLoadingGraph(false);
-    }
-  }, []);
-
-  // Auto-load graph if txid is in URL on mount
-  useEffect(() => {
-    if (initialQuery) {
-      let active = true;
-      Promise.resolve().then(() => {
-        if (active) loadGraph(initialQuery);
-      });
-      return () => {
-        active = false;
-      };
-    }
-  }, [initialQuery, loadGraph]);
+  const activeRun = mockRuns[0];
 
   // Selected node object
   const selectedNode = useMemo(() => {
-    return graphNodes.find((n) => n.id === selectedNodeId) || graphNodes[0];
-  }, [selectedNodeId, graphNodes]);
+    return FORENSIC_GRAPH_NODES.find((n) => n.id === selectedNodeId) || FORENSIC_GRAPH_NODES[0];
+  }, [selectedNodeId]);
 
   // Connected edges to selected node
   const connectedEdges = useMemo(() => {
-    return graphEdges.filter(
+    return FORENSIC_GRAPH_EDGES.filter(
       (e) => e.source === selectedNodeId || e.target === selectedNodeId
     );
-  }, [selectedNodeId, graphEdges]);
+  }, [selectedNodeId]);
 
   // Connected node IDs
   const connectedNodeIds = useMemo(() => {
@@ -183,16 +503,21 @@ function GraphWorkspaceContent() {
 
   // Related neighbor nodes for detail drawer
   const relatedNeighborNodes = useMemo(() => {
-    return graphNodes.filter(
+    return FORENSIC_GRAPH_NODES.filter(
       (n) => n.id !== selectedNodeId && connectedNodeIds.has(n.id)
     );
-  }, [selectedNodeId, connectedNodeIds, graphNodes]);
+  }, [selectedNodeId, connectedNodeIds]);
 
   // Filtered nodes
   const visibleNodes = useMemo(() => {
-    return graphNodes.filter((n) => {
+    return FORENSIC_GRAPH_NODES.filter((n) => {
+      // Type filter
       if (nodeTypeFilter !== 'ALL' && n.type !== nodeTypeFilter) return false;
+
+      // Neighborhood focus
       if (focusNeighborhoodOnly && !connectedNodeIds.has(n.id)) return false;
+
+      // Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchId = n.id.toLowerCase().includes(q);
@@ -200,9 +525,10 @@ function GraphWorkspaceContent() {
         const matchSub = n.sublabel.toLowerCase().includes(q);
         if (!matchId && !matchLabel && !matchSub) return false;
       }
+
       return true;
     });
-  }, [graphNodes, nodeTypeFilter, focusNeighborhoodOnly, connectedNodeIds, searchQuery]);
+  }, [nodeTypeFilter, focusNeighborhoodOnly, connectedNodeIds, searchQuery]);
 
   const visibleNodeIds = useMemo(() => {
     return new Set(visibleNodes.map((n) => n.id));
@@ -210,10 +536,10 @@ function GraphWorkspaceContent() {
 
   // Filtered edges
   const visibleEdges = useMemo(() => {
-    return graphEdges.filter(
+    return FORENSIC_GRAPH_EDGES.filter(
       (e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)
     );
-  }, [graphEdges, visibleNodeIds]);
+  }, [visibleNodeIds]);
 
   // Pan handlers for canvas
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -275,12 +601,12 @@ function GraphWorkspaceContent() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">ACTIVE RUN:</span>
-              <span className="font-semibold text-[var(--accent-primary-light)]">{latestRun?.run_id ?? '—'}</span>
+              <span className="font-semibold text-[var(--accent-primary-light)]">{activeRun.run_id}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">DATASET:</span>
-              <span className="text-[var(--text-primary)] font-medium">{(latestRun?.dataset_metadata?.name as string) ?? '—'}</span>
+              <span className="text-[var(--text-primary)] font-medium">{activeRun.dataset_name}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div className="flex items-center gap-1.5">
@@ -295,27 +621,6 @@ function GraphWorkspaceContent() {
           </div>
         </div>
 
-        {/* ── TXID Lookup Strip ── */}
-        <div className="flex items-center gap-2 p-3 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-md)]">
-          <Search size={14} className="text-[var(--text-tertiary)] shrink-0" />
-          <input
-            type="text"
-            value={txidInput}
-            onChange={(e) => setTxidInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') loadGraph(txidInput); }}
-            placeholder="Enter Transaction ID to load graph (press Enter or click Explore)"
-            className="flex-1 min-w-0 bg-transparent text-xs font-mono text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none"
-          />
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={() => loadGraph(txidInput)}
-            className="shrink-0"
-          >
-            {loadingGraph ? 'Loading...' : 'Explore'}
-          </Button>
-        </div>
-
         {/* ── 2. Compact Graph Metrics Strip ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 font-mono text-xs">
           <div className="p-2.5 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex items-center justify-between">
@@ -328,19 +633,19 @@ function GraphWorkspaceContent() {
           </div>
           <div className="p-2.5 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex items-center justify-between">
             <span className="text-[10px] uppercase text-[var(--text-tertiary)]">TRANSACTIONS</span>
-            <span className="font-bold text-[var(--accent-primary-light)]">{graphNodes.filter(n => n.type === 'TRANSACTION').length}</span>
+            <span className="font-bold text-[var(--accent-primary-light)]">2</span>
           </div>
           <div className="p-2.5 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex items-center justify-between">
             <span className="text-[10px] uppercase text-[var(--text-tertiary)]">ADDRESSES</span>
-            <span className="font-bold text-[var(--text-secondary)]">{graphNodes.filter(n => n.type === 'ADDRESS').length}</span>
+            <span className="font-bold text-[var(--text-secondary)]">4</span>
           </div>
           <div className="p-2.5 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex items-center justify-between">
             <span className="text-[10px] uppercase text-[var(--text-tertiary)]">NETWORK NODES</span>
-            <span className="font-bold text-[var(--text-secondary)]">{graphNodes.filter(n => n.type === 'IP' || n.type === 'ASN' || n.type === 'COUNTRY').length}</span>
+            <span className="font-bold text-[var(--text-secondary)]">3</span>
           </div>
           <div className="p-2.5 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex items-center justify-between">
             <span className="text-[10px] uppercase text-[var(--text-tertiary)]">CANDIDATE ENTITIES</span>
-            <span className="font-bold text-[var(--risk-critical)]">{graphNodes.filter(n => n.type === 'CANDIDATE_ENTITY').length}</span>
+            <span className="font-bold text-[var(--risk-critical)]">1 Cluster</span>
           </div>
         </div>
 
@@ -413,24 +718,7 @@ function GraphWorkspaceContent() {
               onMouseUp={handleMouseUp}
               className="relative flex-1 w-full h-full bg-[#080808] bg-grid-subtle flex items-center justify-center overflow-hidden select-none cursor-grab active:cursor-grabbing"
             >
-              {loadingGraph ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <span className="text-xs font-mono text-[var(--text-tertiary)] animate-pulse">Loading graph from backend…</span>
-                </div>
-              ) : graphError ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center font-mono">
-                  <p className="text-xs text-[var(--risk-critical)]">{graphError}</p>
-                  <Button variant="secondary" size="sm" onClick={() => { setGraphError(null); setTxidInput(''); }}>
-                    <span>Clear</span>
-                  </Button>
-                </div>
-              ) : graphNodes.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center font-mono">
-                  <p className="text-xs text-[var(--text-tertiary)] mb-2">
-                    Enter a Transaction ID above and click Explore to load its forensic graph.
-                  </p>
-                </div>
-              ) : visibleNodes.length === 0 ? (
+              {visibleNodes.length === 0 ? (
                 <div className="text-center p-8 font-mono">
                   <p className="text-xs text-[var(--text-tertiary)] mb-2">
                     No graph nodes match the filter criteria.
@@ -476,14 +764,10 @@ function GraphWorkspaceContent() {
                     </marker>
                   </defs>
 
-
                   {/* ── Edges Layer ── */}
-                  {(() => {
-                    const nodeMap = new Map(graphNodes.map(n => [n.id, n]));
-                    return visibleEdges.map((edge) => {
-                      const sourceNode = nodeMap.get(edge.source);
-                      const targetNode = nodeMap.get(edge.target);
-
+                  {visibleEdges.map((edge) => {
+                    const sourceNode = FORENSIC_GRAPH_NODES.find((n) => n.id === edge.source);
+                    const targetNode = FORENSIC_GRAPH_NODES.find((n) => n.id === edge.target);
                     if (!sourceNode || !targetNode) return null;
 
                     const isConnectedToSelected =
@@ -540,9 +824,7 @@ function GraphWorkspaceContent() {
                         </text>
                       </g>
                     );
-                    });
-                  })()}
-
+                  })}
 
                   {/* ── Nodes Layer ── */}
                   {visibleNodes.map((node) => {
