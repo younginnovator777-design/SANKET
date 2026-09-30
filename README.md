@@ -1,51 +1,36 @@
-# BIT-SHIELD
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-Bitcoin transaction telemetry ingestion and analysis. This repo currently holds
-the data foundation: ingestion, storage and the shared data format that the
-detection, graph and dataset modules build on.
+## Getting Started
 
-## What works now
+First, run the development server:
 
-- CSV, JSON and XML ingestion into one common transaction format
-- Validation with quarantine routing for malformed records
-- Parquet output for analytical queries, read via DuckDB
-- SQLite run metadata (per-batch counts and status)
-- CLI ingestion entrypoint
-- FastAPI app with the route shapes stubbed out
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
 
-## To be built next
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Detection engine, graph construction, synthetic dataset, evaluation and UI.
-Those live in `src/engine/`, `src/graph/`, `dataset/` and `evaluation/`.
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## Setup
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -e .
-    pytest -q
+## Learn More
 
-## Run an ingestion
+To learn more about Next.js, take a look at the following resources:
 
-    python scripts/ingest.py data/sample/sample.csv --batch-id batch_demo_001
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-Output lands in `data/canonical/` (Parquet) and `data/quarantine/` (JSON).
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Run the API
+## Deploy on Vercel
 
-    uvicorn api.main:app --reload
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Most endpoints return placeholder data until the corresponding module is built.
-
-## Layout
-
-    src/contract/   shared data models
-    src/ingest/     csv / json / xml parsers
-    src/storage/    parquet, duckdb, sqlite
-    src/pipeline/   ingestion orchestration
-    src/engine/     detection (features, detectors, models, scoring, explain)
-    src/graph/      graph construction
-    dataset/        synthetic data generation
-    evaluation/     evaluation scripts
-    api/            FastAPI app
-
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

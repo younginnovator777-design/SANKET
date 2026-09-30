@@ -1,0 +1,243 @@
+@import "tailwindcss";
+
+/* ============================================================
+   SANKET — Forensic Intelligence Design System Tokens
+   System for Anomaly & Network Knowledge Extraction from Transactions
+   ============================================================ */
+
+:root {
+  /* ── Base Palette (Near-Black & Graphite) ── */
+  --bg-primary: #080808;
+  --bg-secondary: #0d0d0d;
+  --bg-tertiary: #121212;
+  --bg-elevated: #181818;
+  --bg-hover: #1b1b1b;
+  --bg-active: #242424;
+
+  /* ── Surface Containers ── */
+  --surface-1: #0e0e0e;
+  --surface-2: #141414;
+  --surface-3: #1a1a1a;
+  --surface-elevated: #1e1e1e;
+
+  /* ── Subtle Graphite Borders ── */
+  --border-subtle: #1e1e1e;
+  --border-default: #282828;
+  --border-strong: #383838;
+
+  /* ── Typography Palette ── */
+  --text-primary: #f2f0ea;       /* Warm off-white */
+  --text-secondary: #a3a09a;     /* Muted neutral grey */
+  --text-tertiary: #6f6c66;      /* Subdued label grey */
+  --text-muted: #484642;         /* Dim metadata */
+
+  /* ── Warm Metallic Accent (Amber / Antique Gold / Copper) ── */
+  --accent-primary: #c8a96b;
+  --accent-primary-hover: #b8945a;
+  --accent-primary-light: #d0b477;
+  --accent-primary-muted: rgba(200, 169, 107, 0.15);
+  --accent-primary-subtle: rgba(200, 169, 107, 0.08);
+  --accent-primary-border: rgba(200, 169, 107, 0.28);
+
+  /* ── Secondary Restrained Information Tone ── */
+  --accent-secondary: #7a828e;
+  --accent-secondary-subtle: rgba(122, 130, 142, 0.1);
+
+  /* ── Semantic Desaturated Risk Colors ── */
+  --risk-low: #46a758;
+  --risk-low-bg: rgba(70, 167, 88, 0.08);
+  --risk-low-border: rgba(70, 167, 88, 0.22);
+
+  --risk-medium: #cca43b;
+  --risk-medium-bg: rgba(204, 164, 59, 0.08);
+  --risk-medium-border: rgba(204, 164, 59, 0.22);
+
+  --risk-high: #e06c30;
+  --risk-high-bg: rgba(224, 108, 48, 0.08);
+  --risk-high-border: rgba(224, 108, 48, 0.22);
+
+  --risk-critical: #cf4c4c;
+  --risk-critical-bg: rgba(207, 76, 76, 0.08);
+  --risk-critical-border: rgba(207, 76, 76, 0.24);
+
+  /* ── System Status ── */
+  --status-offline: #46a758;
+  --status-ready: #46a758;
+  --status-processing: #c8a96b;
+  --status-error: #cf4c4c;
+
+  /* ── Layout Dimensions ── */
+  --sidebar-width: 256px;
+  --sidebar-collapsed-width: 68px;
+  --header-height: 52px;
+  --page-padding: 28px;
+  --page-max-width: 1440px;
+
+  /* ── Radius & Shadows ── */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.8);
+
+  /* ── Transitions ── */
+  --transition-fast: 120ms ease;
+  --transition-normal: 180ms ease;
+  --transition-slow: 260ms ease;
+
+  /* ── Fonts ── */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), 'SF Mono', 'Fira Code', monospace;
+  --font-display: var(--font-serif), Georgia, serif;
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-serif);
+}
+
+/* ============================================================
+   Global Resets & Terminal Feel
+   ============================================================ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #242424 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #242424;
+  border-radius: 2px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+html {
+  height: 100%;
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Focus Styles (Accessibility) ── */
+*:focus-visible {
+  outline: 1.5px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Selection ── */
+::selection {
+  background: var(--accent-primary-muted);
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Forensic Typography Scale & Classes
+   ============================================================ */
+
+.font-serif-display {
+  font-family: var(--font-display);
+}
+
+.text-brand-mark {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.text-page-title {
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.text-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.text-card-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.text-metric {
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.text-metric-sm {
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.text-metadata {
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.text-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* Subtle dot grid pattern for technical panels */
+.bg-grid-subtle {
+  background-size: 20px 20px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+}

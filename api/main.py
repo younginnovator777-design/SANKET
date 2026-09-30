@@ -1,11 +1,21 @@
 from fastapi import FastAPI
+from api.routes.analysis import router as analysis_router
+from api.schemas import HealthResponse
 from src.contract.models import Alert, GraphResponse
+from src.pipeline import PIPELINE_VERSION
 
-app = FastAPI(title="BIT-SHIELD Core API", version="0.1.0")
+app = FastAPI(title="SANKET Core API", version="0.1.0")
 
-@app.get("/health")
+app.include_router(analysis_router)
+
+
+@app.get("/health", response_model=HealthResponse)
 def health_check():
-    return {"status": "ok", "service": "BIT-SHIELD Data Plane"}
+    return {
+        "status": "healthy",
+        "service": "SANKET",
+        "pipeline_version": PIPELINE_VERSION,
+    }
 
 @app.get("/runs/{run_id}")
 def get_run_status(run_id: str):
