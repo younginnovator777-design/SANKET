@@ -24,6 +24,7 @@ import {
   EmptyState,
 } from '@/components/ui';
 import { analyzeFile, ApiAnalysisResponse, ApiError } from '@/lib/api';
+import { useCurrentRun, toCompactRunMetadata } from '@/context/RunContext';
 
 type PipelineStatus = 'empty' | 'preview' | 'running' | 'completed' | 'error';
 
@@ -119,6 +120,7 @@ const CANONICAL_SCHEMA_FIELDS = [
 ];
 
 export default function AnalyzePage() {
+  const { startRun, completeRun, failRun, clearRun } = useCurrentRun();
   const [format, setFormat] = useState<'CSV' | 'JSON' | 'XML'>('CSV');
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('empty');
   const [currentRunningIndex, setCurrentRunningIndex] = useState<number>(0); // 0 to 7
@@ -183,13 +185,16 @@ export default function AnalyzePage() {
       return;
     }
 
+    const runStartTime = new Date().toISOString();
     setPipelineStatus('running');
     setCurrentRunningIndex(0);
     setErrorMessage(null);
+    startRun(selectedFile.name);
 
     try {
       const result = await analyzeFile(selectedFile);
       setAnalysisResult(result);
+      completeRun(toCompactRunMetadata(result, runStartTime));
       setCurrentRunningIndex(7);
       setSelectedStageIndex(7);
       setPipelineStatus('completed');
@@ -202,6 +207,7 @@ export default function AnalyzePage() {
           : String(err);
       setErrorMessage(detail);
       setPipelineStatus('error');
+      failRun(detail);
     }
   };
 
@@ -212,6 +218,7 @@ export default function AnalyzePage() {
     setPipelineStatus('empty');
     setCurrentRunningIndex(0);
     setSelectedStageIndex(0);
+    clearRun();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

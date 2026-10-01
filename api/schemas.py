@@ -58,6 +58,7 @@ class AlertsListResponse(BaseModel):
 
 class AlertDetailResponse(BaseModel):
     """Deep-dive investigation detail response for /api/v1/alerts/{alert_id}."""
+    run_id: Optional[str] = Field(None, description="Active analysis run identifier")
     alert: AlertSummaryResponse = Field(..., description="Alert summary")
     investigation_object: Dict[str, Any] = Field(..., description="Full underlying investigation object")
     detector_scores: Dict[str, float] = Field(..., description="Individual detector score breakdown")

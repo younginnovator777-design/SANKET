@@ -128,7 +128,7 @@ async def analyze_csv(
 
     # 6. Execute Task 7 Pipeline
     config = None
-    if min_risk_level:
+    if isinstance(min_risk_level, str) and min_risk_level:
         config = PipelineConfig(alert_tier_filter=min_risk_level)
 
     try:
@@ -168,6 +168,33 @@ async def analyze_csv(
     return adapt_analysis_result(result)
 
 
+def _require_active_analysis(run_id: Optional[str] = None):
+    """
+    Ensure an active analysis result exists and matches run_id if provided.
+    Raises HTTP 404 if no analysis exists or if requested run_id does not match active run.
+    """
+    if not analysis_state.has_analysis():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
+        )
+
+    latest = analysis_state.get_latest_result()
+    if latest is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
+        )
+
+    if isinstance(run_id, str) and latest.run_id != run_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run '{run_id}' not found. Current active run is '{latest.run_id}'. Historical run retrieval is unsupported.",
+        )
+
+    return latest
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. GET /api/v1/alerts
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,23 +205,20 @@ async def analyze_csv(
     description="Returns deterministically ranked alerts from the most recent completed analysis run, with optional tier filtering.",
 )
 def get_ranked_alerts(
+    run_id: Optional[str] = Query(
+        None,
+        description="Active analysis run identifier",
+    ),
     min_risk_level: Optional[str] = Query(
         None,
         description="Filter alerts by minimum risk tier ('CRITICAL', 'HIGH+', 'MEDIUM+')",
     ),
 ) -> AlertsListResponse:
     """Provide ranked alerts from the most recent completed analysis."""
-    if not analysis_state.has_analysis():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
-        )
-
-    latest = analysis_state.get_latest_result()
-    assert latest is not None
+    latest = _require_active_analysis(run_id)
     alerts = latest.ranked_alerts
 
-    if min_risk_level:
+    if isinstance(min_risk_level, str) and min_risk_level:
         alerts = filter_alerts(alerts, min_level=min_risk_level)
 
     adapted_alerts = [adapt_alert(a) for a in alerts]
@@ -213,16 +237,15 @@ def get_ranked_alerts(
     summary="Get Detailed Investigation Information for an Alert",
     description="Returns complete investigation evidence, detector scores, and component breakdowns for a specific alert ID.",
 )
-def get_alert_detail(alert_id: str) -> AlertDetailResponse:
+def get_alert_detail(
+    alert_id: str,
+    run_id: Optional[str] = Query(
+        None,
+        description="Active analysis run identifier",
+    ),
+) -> AlertDetailResponse:
     """Return complete investigation information for one alert."""
-    if not analysis_state.has_analysis():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
-        )
-
-    latest = analysis_state.get_latest_result()
-    assert latest is not None
+    latest = _require_active_analysis(run_id)
 
     # Locate alert by alert_id
     matched_alert = None
@@ -234,7 +257,7 @@ def get_alert_detail(alert_id: str) -> AlertDetailResponse:
     if matched_alert is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Alert with ID '{alert_id}' not found in latest analysis.",
+            detail=f"Alert with ID '{alert_id}' not found in active analysis run '{latest.run_id}'.",
         )
 
     inv = matched_alert.investigation_object
@@ -257,6 +280,7 @@ def get_alert_detail(alert_id: str) -> AlertDetailResponse:
     graph_evidence = inv.graph_evidence if inv else per_tx.get("graph_evidence")
 
     return AlertDetailResponse(
+        run_id=latest.run_id,
         alert=adapt_alert(matched_alert),
         investigation_object=inv_dict,
         detector_scores={k: round(float(v), 4) for k, v in detector_scores.items()},
@@ -276,22 +300,21 @@ def get_alert_detail(alert_id: str) -> AlertDetailResponse:
     summary="Get Transaction-Level Investigation Record",
     description="Returns the full forensic investigation record, features, detector results, and graph evidence for a specific transaction ID.",
 )
-def get_transaction_detail(txid: str) -> TransactionDetailResponse:
+def get_transaction_detail(
+    txid: str,
+    run_id: Optional[str] = Query(
+        None,
+        description="Active analysis run identifier",
+    ),
+) -> TransactionDetailResponse:
     """Return the transaction-level investigation record from the most recent analysis."""
-    if not analysis_state.has_analysis():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
-        )
-
-    latest = analysis_state.get_latest_result()
-    assert latest is not None
+    latest = _require_active_analysis(run_id)
 
     per_tx = latest.per_transaction_results.get(txid)
     if not per_tx:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Transaction '{txid}' not found in latest analysis.",
+            detail=f"Transaction '{txid}' not found in active analysis run '{latest.run_id}'.",
         )
 
     canonical = analysis_state.get_canonical_record(txid)
@@ -321,21 +344,21 @@ def get_transaction_detail(txid: str) -> TransactionDetailResponse:
 )
 def get_transaction_graph(
     txid: str,
+    run_id: Optional[str] = Query(
+        None,
+        description="Active analysis run identifier",
+    ),
     hops: int = Query(2, ge=1, le=5, description="Number of hops to traverse outward from center node"),
     hop: Optional[int] = Query(None, ge=1, le=5, description="Alias for hops query parameter"),
 ) -> GraphQueryResponse:
     """Return induced graph data and graph evidence for a transaction."""
-    if not analysis_state.has_analysis():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
-        )
+    latest = _require_active_analysis(run_id)
 
     graph = analysis_state.get_latest_graph()
     if graph is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Graph representation is not available for the latest analysis.",
+            detail=f"Graph representation is not available for active analysis run '{latest.run_id}'.",
         )
 
     engine = GraphQueryEngine(graph)
@@ -343,10 +366,10 @@ def get_transaction_graph(
     if center_node is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Transaction '{txid}' not found in graph.",
+            detail=f"Transaction '{txid}' not found in graph for active run '{latest.run_id}'.",
         )
 
-    effective_hops = hop if hop is not None else hops
+    effective_hops = hop if isinstance(hop, int) else (hops if isinstance(hops, int) else 2)
     subgraph = engine.get_subgraph(txid, hops=effective_hops)
     evidence = engine.produce_graph_evidence(txid)
 
@@ -393,16 +416,14 @@ def get_transaction_graph(
     summary="Get Summary of Most Recent Analysis Run",
     description="Returns the execution summary, risk tier counts, and dataset metadata of the latest completed analysis.",
 )
-def get_latest_run_summary() -> LatestRunSummaryResponse:
+def get_latest_run_summary(
+    run_id: Optional[str] = Query(
+        None,
+        description="Optional run identifier to verify against active run",
+    ),
+) -> LatestRunSummaryResponse:
     """Return the latest completed analysis summary for Overview and Run History views."""
-    if not analysis_state.has_analysis():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No analysis has been run yet. Please upload and analyze a dataset first.",
-        )
-
-    latest = analysis_state.get_latest_result()
-    assert latest is not None
+    latest = _require_active_analysis(run_id)
 
     # Compute risk tier counts
     risk_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ShieldAlert,
@@ -22,6 +22,7 @@ import {
   Cpu,
   Clock,
   ArrowLeftRight,
+  RefreshCw,
 } from 'lucide-react';
 import { PageContainer } from '@/components/PageContainer';
 import {
@@ -35,56 +36,159 @@ import {
   DataTable,
   Column,
 } from '@/components/ui';
-import { mockAlerts, mockRuns, mockInvestigation } from '@/data/mock';
+import { useRun } from '@/context/RunContext';
+import {
+  apiClient,
+  ApiError,
+  adaptApiAlertToAlert,
+  adaptApiAlertDetail,
+} from '@/lib/api';
 import { Alert, RiskLevel } from '@/types';
 
 type RiskFilterOption = 'ALL' | 'MEDIUM+' | 'HIGH+' | 'CRITICAL';
 
+const COMPONENT_LABELS: Record<string, string> = {
+  M: 'M (Multivariate Anomaly)',
+  T: 'T (Temporal Deviation)',
+  N: 'N (Network Observation)',
+  G: 'G (Graph Topology)',
+  S: 'S (Structural Pattern)',
+  Gs: 'Gs (Graph Support)',
+  C: 'C (Confidence Factor)',
+};
+
+const CONFIDENCE_LABELS: Record<string, string> = {
+  D: 'D (Data Completeness)',
+  E: 'E (Evidence Agreement)',
+  S: 'S (Statistical Stability)',
+  Gs: 'Gs (Graph Support)',
+  X: 'X (Explanation Consistency)',
+};
+
 export default function AlertsPage() {
+  const { runId, currentRun, isHydrated } = useRun();
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<RiskFilterOption>('ALL');
   const [selectedDetector, setSelectedDetector] = useState<string>('ALL');
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [dossier, setDossier] = useState<ReturnType<typeof adaptApiAlertDetail> | null>(null);
+  const [dossierLoading, setDossierLoading] = useState<boolean>(false);
+  const [dossierError, setDossierError] = useState<string | null>(null);
   const [copiedTx, setCopiedTx] = useState(false);
 
-  const activeRun = mockRuns[0];
+  const fetchAlerts = useCallback(async (activeRunId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.getAlerts({ run_id: activeRunId });
+      setAlerts((response?.alerts || []).map(adaptApiAlertToAlert));
+    } catch (err: unknown) {
+      const msg =
+        err instanceof ApiError
+          ? err.detail
+          : err instanceof Error
+          ? err.message
+          : 'Failed to retrieve investigative leads from the API.';
+      setError(msg);
+      setAlerts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // Derive unique detectors from all mockAlerts
-  const allDetectors = Array.from(
-    new Set(mockAlerts.flatMap((a) => a.triggered_detectors))
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (runId) {
+      fetchAlerts(runId);
+    } else {
+      setLoading(false);
+      setAlerts([]);
+    }
+  }, [runId, isHydrated, fetchAlerts]);
+
+  // Retrieve canonical investigation dossier for selected alert from backend
+  const fetchDossier = useCallback(
+    async (alertId: string, activeRunId?: string | null) => {
+      // Immediately reset to guarantee no stale data from previous selection is displayed
+      setDossier(null);
+      setDossierError(null);
+      setDossierLoading(true);
+      try {
+        const detail = await apiClient.getAlert(alertId, activeRunId || undefined);
+        setDossier(adaptApiAlertDetail(detail));
+      } catch (err: unknown) {
+        const msg =
+          err instanceof ApiError
+            ? err.detail
+            : err instanceof Error
+            ? err.message
+            : `Failed to retrieve investigation dossier for alert ${alertId}.`;
+        setDossierError(msg);
+      } finally {
+        setDossierLoading(false);
+      }
+    },
+    []
   );
 
-  // Filter alerts according to requirements while preserving authoritative backend rank order
-  const filteredAlerts = mockAlerts.filter((alert) => {
-    // Risk tier filter
-    if (selectedRiskFilter === 'CRITICAL' && alert.risk_level !== 'CRITICAL') return false;
-    if (selectedRiskFilter === 'HIGH+' && alert.risk_level !== 'CRITICAL' && alert.risk_level !== 'HIGH') return false;
-    if (selectedRiskFilter === 'MEDIUM+' && alert.risk_level === 'LOW') return false;
-
-    // Detector filter
-    if (selectedDetector !== 'ALL' && !alert.triggered_detectors.includes(selectedDetector)) return false;
-
-    // Search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        alert.transaction_id.toLowerCase().includes(q) ||
-        alert.alert_id.toLowerCase().includes(q) ||
-        alert.triggered_detectors.some((d) => d.toLowerCase().includes(q))
-      );
+  useEffect(() => {
+    if (!selectedAlertId) {
+      setDossier(null);
+      setDossierError(null);
+      setDossierLoading(false);
+      return;
     }
-    return true;
-  });
+    fetchDossier(selectedAlertId, runId);
+  }, [selectedAlertId, runId, fetchDossier]);
 
-  // Summary row metrics computed strictly from mock data
-  const totalLeads = mockAlerts.length;
-  const highCriticalCount = mockAlerts.filter(
+  const handleCloseDossier = () => {
+    setSelectedAlertId(null);
+    setDossier(null);
+    setDossierError(null);
+  };
+
+  // Derive unique detectors from real backend alerts
+  const allDetectors = useMemo(
+    () => Array.from(new Set(alerts.flatMap((a) => a.triggered_detectors || []))),
+    [alerts]
+  );
+
+  // Filter alerts according to criteria while strictly preserving authoritative backend rank order
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter((alert) => {
+      // Risk tier filter
+      if (selectedRiskFilter === 'CRITICAL' && alert.risk_level !== 'CRITICAL') return false;
+      if (selectedRiskFilter === 'HIGH+' && alert.risk_level !== 'CRITICAL' && alert.risk_level !== 'HIGH') return false;
+      if (selectedRiskFilter === 'MEDIUM+' && alert.risk_level === 'LOW') return false;
+
+      // Detector filter
+      if (selectedDetector !== 'ALL' && !(alert.triggered_detectors || []).includes(selectedDetector)) return false;
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          alert.transaction_id.toLowerCase().includes(q) ||
+          alert.alert_id.toLowerCase().includes(q) ||
+          (alert.triggered_detectors || []).some((d) => d.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [alerts, selectedRiskFilter, selectedDetector, searchQuery]);
+
+  // Summary row metrics computed strictly from real backend alerts
+  const totalLeads = alerts.length;
+  const highCriticalCount = alerts.filter(
     (a) => a.risk_level === 'CRITICAL' || a.risk_level === 'HIGH'
   ).length;
-  const mediumPlusCount = mockAlerts.filter((a) => a.risk_level !== 'LOW').length;
+  const mediumPlusCount = alerts.filter((a) => a.risk_level !== 'LOW').length;
   const avgConfidence =
-    mockAlerts.length > 0
-      ? (mockAlerts.reduce((acc, a) => acc + a.confidence_score, 0) / mockAlerts.length) * 100
+    alerts.length > 0
+      ? (alerts.reduce((acc, a) => acc + a.confidence_score, 0) / alerts.length) * 100
       : 0;
 
   const handleCopyTx = (txid: string) => {
@@ -99,7 +203,7 @@ export default function AlertsPage() {
     setSelectedDetector('ALL');
   };
 
-  // Main investigation table columns
+  // Main investigation table columns preserving real backend attributes
   const columns: Column<Alert>[] = [
     {
       key: 'rank',
@@ -156,7 +260,9 @@ export default function AlertsPage() {
       render: (alert) => (
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs text-[var(--text-primary)] font-medium">
-            {alert.transaction_id.slice(0, 14)}...{alert.transaction_id.slice(-8)}
+            {alert.transaction_id.length > 24
+              ? `${alert.transaction_id.slice(0, 14)}...${alert.transaction_id.slice(-8)}`
+              : alert.transaction_id}
           </span>
         </div>
       ),
@@ -178,7 +284,7 @@ export default function AlertsPage() {
       header: 'DETECTED PATTERNS',
       render: (alert) => (
         <div className="flex flex-wrap gap-1">
-          {alert.triggered_detectors.map((d, i) => (
+          {(alert.triggered_detectors || []).map((d, i) => (
             <span
               key={i}
               className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-xs bg-[var(--surface-2)] text-[var(--text-secondary)] border border-[var(--border-subtle)]"
@@ -190,16 +296,131 @@ export default function AlertsPage() {
       ),
     },
     {
-      key: 'created_at',
-      header: 'TIMESTAMP',
+      key: 'alert_id',
+      header: 'ALERT ID',
       mono: true,
       render: (alert) => (
         <span className="text-[11px] font-mono text-[var(--text-tertiary)]">
-          {alert.created_at ? alert.created_at.replace('T', ' ').replace(':00Z', ' UTC') : '—'}
+          {alert.alert_id}
         </span>
       ),
     },
   ];
+
+  // 1. Truthful Loading State
+  if (!isHydrated || (loading && alerts.length === 0 && runId)) {
+    return (
+      <PageContainer
+        title="INVESTIGATIVE LEADS"
+        description="Ranked anomaly signals with explainable supporting evidence."
+        tag="LEAD CONSOLE"
+        icon={<ShieldAlert size={18} />}
+      >
+        <div className="flex flex-col items-center justify-center min-h-[360px] p-12 text-center border border-[var(--border-default)] rounded-[var(--radius-md)] bg-[var(--surface-1)]">
+          <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin mb-4" />
+          <h3 className="text-xs font-mono font-semibold uppercase tracking-[0.1em] text-[var(--text-primary)]">
+            Retrieving Investigative Leads
+          </h3>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1 font-mono">
+            Fetching ranked alerts from active run {runId}...
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  // 2. Truthful No Active Run State
+  if (!runId || (!currentRun && alerts.length === 0)) {
+    return (
+      <PageContainer
+        title="INVESTIGATIVE LEADS"
+        description="Ranked anomaly signals with explainable supporting evidence."
+        tag="LEAD CONSOLE"
+        icon={<ShieldAlert size={18} />}
+      >
+        <EmptyState
+          title="NO ACTIVE ANALYSIS RUN"
+          description="No active transaction dataset run was found. Upload and analyze a dataset to generate ranked investigative leads and anomaly scores."
+          action={
+            <Link href="/analyze">
+              <Button variant="accent" size="md">
+                <span>Ingest Dataset</span>
+                <ArrowRight size={14} />
+              </Button>
+            </Link>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  // 3. Truthful API Error State
+  if (error && alerts.length === 0) {
+    return (
+      <PageContainer
+        title="INVESTIGATIVE LEADS"
+        description="Ranked anomaly signals with explainable supporting evidence."
+        tag="LEAD CONSOLE"
+        icon={<ShieldAlert size={18} />}
+      >
+        <EmptyState
+          title="API CONNECTION ERROR"
+          description={error}
+          action={
+            <div className="flex items-center gap-3">
+              {runId && (
+                <Button variant="secondary" size="md" onClick={() => fetchAlerts(runId)}>
+                  <span>Retry Request</span>
+                </Button>
+              )}
+              <Link href="/analyze">
+                <Button variant="accent" size="md">
+                  <span>Ingest New Dataset</span>
+                  <ArrowRight size={14} />
+                </Button>
+              </Link>
+            </div>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  // 4. Truthful Empty Run State (0 alerts detected)
+  if (alerts.length === 0) {
+    return (
+      <PageContainer
+        title="INVESTIGATIVE LEADS"
+        description="Ranked anomaly signals with explainable supporting evidence."
+        tag="LEAD CONSOLE"
+        icon={<ShieldAlert size={18} />}
+      >
+        <EmptyState
+          title="NO ANOMALOUS LEADS DETECTED"
+          description={`Analysis run ${runId} completed with 0 flagged anomalies above analytical thresholds.`}
+          action={
+            <div className="flex items-center gap-3">
+              <Link href="/overview">
+                <Button variant="secondary" size="md">
+                  <span>View Overview</span>
+                </Button>
+              </Link>
+              <Link href="/analyze">
+                <Button variant="accent" size="md">
+                  <span>Ingest Another Dataset</span>
+                  <ArrowRight size={14} />
+                </Button>
+              </Link>
+            </div>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  const activeRunId = currentRun?.run_id || runId || '';
+  const datasetName = (currentRun?.dataset_metadata?.filename as string) || 'Ingested CSV Dataset';
+  const scoringVersion = alerts[0]?.scoring_version || currentRun?.pipeline_version || 'sanket-scoring-v1';
 
   return (
     <PageContainer
@@ -209,10 +430,11 @@ export default function AlertsPage() {
       icon={<ShieldAlert size={18} />}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">
-            <Download size={13} />
-            <span>Export Lead Dossiers</span>
-          </Button>
+          <Link href="/analyze">
+            <Button variant="secondary" size="sm">
+              <span>Ingest Dataset</span>
+            </Button>
+          </Link>
         </div>
       }
     >
@@ -222,17 +444,17 @@ export default function AlertsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">CURRENT RUN:</span>
-              <span className="font-semibold text-[var(--accent-primary-light)]">{activeRun.run_id}</span>
+              <span className="font-semibold text-[var(--accent-primary-light)]">{activeRunId}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">TARGET DATASET:</span>
-              <span className="text-[var(--text-primary)] font-medium">{activeRun.dataset_name}</span>
+              <span className="text-[var(--text-primary)] font-medium">{datasetName}</span>
             </div>
             <span className="text-[var(--border-strong)]">|</span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] uppercase text-[var(--text-tertiary)]">SCORING ENGINE:</span>
-              <span className="text-[var(--text-secondary)]">{activeRun.scoring_version}</span>
+              <span className="text-[var(--text-secondary)]">{scoringVersion}</span>
             </div>
           </div>
 
@@ -262,7 +484,7 @@ export default function AlertsPage() {
           </div>
           <div className="p-3 bg-[var(--surface-1)] border border-[var(--border-default)] rounded-[var(--radius-sm)] flex flex-col justify-between">
             <span className="text-[10px] uppercase text-[var(--text-tertiary)]">ACTIVE RUN ID</span>
-            <div className="text-xs font-bold text-[var(--text-secondary)] mt-1.5 truncate">{activeRun.run_id}</div>
+            <div className="text-xs font-bold text-[var(--text-secondary)] mt-1.5 truncate">{activeRunId}</div>
           </div>
         </div>
 
@@ -327,7 +549,7 @@ export default function AlertsPage() {
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] font-mono text-[var(--text-tertiary)] px-1">
-              <span>SHOWING {filteredAlerts.length} OF {mockAlerts.length} RANKED LEADS</span>
+              <span>SHOWING {filteredAlerts.length} OF {alerts.length} RANKED LEADS</span>
               <span>CLICK ANY ROW TO OPEN INVESTIGATION DOSSIER</span>
             </div>
 
@@ -335,32 +557,68 @@ export default function AlertsPage() {
               columns={columns}
               data={filteredAlerts}
               keyExtractor={(item) => item.alert_id}
-              onRowClick={(item) => setSelectedAlert(item)}
+              onRowClick={(item) => setSelectedAlertId(item.alert_id)}
             />
           </div>
         )}
       </div>
 
-      {/* ── 5. Large Right-Side Investigation Dossier Drawer ── */}
+      {/* ── 5. Canonical Investigation Dossier Drawer ── */}
       <Drawer
-        isOpen={selectedAlert !== null}
-        onClose={() => setSelectedAlert(null)}
-        title={`INVESTIGATIVE LEAD: ${selectedAlert?.alert_id}`}
+        isOpen={selectedAlertId !== null}
+        onClose={handleCloseDossier}
+        title={selectedAlertId ? `ALERT DOSSIER: ${selectedAlertId}` : 'ALERT DOSSIER'}
         className="max-w-xl"
       >
-        {selectedAlert && (
+        {/* Loading State */}
+        {dossierLoading && (
+          <div className="flex flex-col items-center justify-center py-20 space-y-3 font-mono text-xs">
+            <div className="w-7 h-7 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
+            <span className="text-[var(--text-secondary)]">Retrieving canonical alert dossier from backend...</span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">
+              GET /api/v1/alerts/{selectedAlertId}{runId ? `?run_id=${runId}` : ''}
+            </span>
+          </div>
+        )}
+
+        {/* Error State */}
+        {!dossierLoading && dossierError && (
+          <div className="p-4 bg-[var(--risk-critical-bg)] border border-[var(--risk-critical-border)] rounded-[var(--radius-sm)] space-y-3 font-mono text-xs">
+            <div className="flex items-center gap-2 text-[var(--risk-critical)] font-bold">
+              <ShieldAlert size={16} />
+              <span>FAILED TO RETRIEVE ALERT DOSSIER</span>
+            </div>
+            <p className="text-[var(--text-secondary)]">{dossierError}</p>
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => selectedAlertId && fetchDossier(selectedAlertId, runId)}
+              >
+                <RefreshCw size={12} />
+                <span>Retry Request</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCloseDossier}>
+                <span>Close</span>
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Canonical Dossier Content */}
+        {!dossierLoading && !dossierError && dossier && (
           <div className="space-y-6 font-mono text-xs">
-            {/* Header Summary & Monospace TXID */}
+            {/* Header Summary & Identifiers */}
             <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-[var(--radius-sm)] space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-[var(--accent-primary-light)]">
-                    RANK #{selectedAlert.rank}
+                    RANK #{dossier.alert.rank}
                   </span>
                   <span className="text-[var(--text-muted)]">|</span>
-                  <span className="text-xs text-[var(--text-secondary)]">{selectedAlert.alert_id}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">{dossier.alert.alert_id}</span>
                 </div>
-                <RiskBadge level={selectedAlert.risk_level} />
+                <RiskBadge level={dossier.alert.risk_level} />
               </div>
 
               <div>
@@ -369,10 +627,10 @@ export default function AlertsPage() {
                 </div>
                 <div className="flex items-center justify-between gap-2 p-2 rounded-[var(--radius-sm)] bg-[var(--surface-3)] border border-[var(--border-subtle)]">
                   <span className="text-xs text-[var(--accent-primary-light)] break-all font-semibold select-all">
-                    {selectedAlert.transaction_id}
+                    {dossier.alert.transaction_id}
                   </span>
                   <button
-                    onClick={() => handleCopyTx(selectedAlert.transaction_id)}
+                    onClick={() => handleCopyTx(dossier.alert.transaction_id)}
                     className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
                     title="Copy TXID"
                   >
@@ -381,9 +639,15 @@ export default function AlertsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] pt-1">
-                <span>TIMESTAMP: {selectedAlert.created_at?.replace('T', ' ').replace(':00Z', ' UTC')}</span>
-                <span>MODEL VER: {selectedAlert.scoring_version}</span>
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+                <div>
+                  <span className="text-[var(--text-tertiary)]">RUN ID: </span>
+                  <span className="text-[var(--text-secondary)] select-all">{dossier.runId || runId || 'ACTIVE'}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[var(--text-tertiary)]">SCORING VERSION: </span>
+                  <span className="text-[var(--text-secondary)]">{dossier.alert.scoring_version || 'sanket-scoring-v1'}</span>
+                </div>
               </div>
             </div>
 
@@ -392,24 +656,27 @@ export default function AlertsPage() {
               <div className="p-3 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)]">
                 <span className="text-[9px] uppercase text-[var(--text-tertiary)] block">Composite Risk</span>
                 <span className="text-base font-bold text-[var(--risk-critical)] block mt-0.5">
-                  {selectedAlert.risk_score.toFixed(2)}
+                  {dossier.alert.risk_score.toFixed(4)}
                 </span>
+                <span className="text-[9px] text-[var(--text-tertiary)] block mt-0.5">Range [0, 1]</span>
               </div>
               <div className="p-3 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)]">
                 <span className="text-[9px] uppercase text-[var(--text-tertiary)] block">Confidence</span>
                 <span className="text-base font-bold text-[var(--text-primary)] block mt-0.5">
-                  {(selectedAlert.confidence_score * 100).toFixed(0)}%
+                  {(dossier.alert.confidence_score * 100).toFixed(1)}%
                 </span>
+                <span className="text-[9px] text-[var(--text-tertiary)] block mt-0.5">Epistemic</span>
               </div>
               <div className="p-3 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)]">
                 <span className="text-[9px] uppercase text-[var(--text-tertiary)] block">Priority Score</span>
                 <span className="text-base font-bold text-[var(--accent-primary-light)] block mt-0.5">
-                  {selectedAlert.priority_score.toFixed(2)}
+                  {dossier.alert.priority_score.toFixed(4)}
                 </span>
+                <span className="text-[9px] text-[var(--text-tertiary)] block mt-0.5">R × C Ranker</span>
               </div>
             </div>
 
-            {/* ── WHY WAS THIS FLAGGED? (Hero section) ── */}
+            {/* Evidence Items (WHY WAS THIS FLAGGED?) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2">
                 <div className="flex items-center gap-2">
@@ -419,141 +686,200 @@ export default function AlertsPage() {
                   </span>
                 </div>
                 <span className="text-[10px] text-[var(--text-tertiary)]">
-                  {selectedAlert.evidence_items.length} OBSERVED EVIDENCE ITEMS
+                  {dossier.evidenceItems.length} EVIDENCE ITEM{dossier.evidenceItems.length !== 1 ? 'S' : ''}
                 </span>
               </div>
 
-              <div className="space-y-2.5">
-                {selectedAlert.evidence_items.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-[var(--radius-sm)] space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between text-[10px] uppercase">
-                      <span className="text-[var(--accent-primary-light)] font-bold">{item.category}</span>
-                      <span className="text-[var(--text-tertiary)]">SOURCE: {item.source}</span>
+              {dossier.evidenceItems.length === 0 ? (
+                <div className="p-3 text-[11px] text-[var(--text-tertiary)] bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)]">
+                  No evidence items reported by backend for this alert.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {dossier.evidenceItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 bg-[var(--surface-2)] border border-[var(--border-default)] rounded-[var(--radius-sm)] space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-[10px] uppercase">
+                        <span className="text-[var(--accent-primary-light)] font-bold">{item.category}</span>
+                        <span className="text-[var(--text-tertiary)]">SOURCE: {item.source}</span>
+                      </div>
+                      <p className="text-xs text-[var(--text-primary)] font-sans leading-relaxed">
+                        {item.description}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+                        <span>Confidence: {(item.confidence * 100).toFixed(0)}%</span>
+                        <span className="text-[var(--accent-primary-light)] uppercase font-mono">Backend Evidence</span>
+                      </div>
                     </div>
-                    <p className="text-xs text-[var(--text-primary)] font-sans leading-relaxed">
-                      {item.description}
-                    </p>
-                    <div className="flex items-center justify-between text-[10px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-                      <span>Statistical Confidence: {(item.confidence * 100).toFixed(0)}%</span>
-                      <span className="text-[var(--risk-low)] uppercase">Deterministic</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* ── Component Risk Breakdown ── */}
-            <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-2.5">
-              <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold">
-                COMPONENT RISK BREAKDOWN
-              </div>
-              <div className="space-y-2">
-                {Object.entries(selectedAlert.component_scores).map(([category, score]) => (
-                  <div key={category}>
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-[var(--text-primary)] uppercase text-[11px]">{category}</span>
-                      <span className="text-[var(--accent-primary-light)] font-semibold">{score.toFixed(2)}</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-[var(--surface-3)] rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[var(--accent-primary)] rounded-full"
-                        style={{ width: `${score * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* ── Signal Agreement & Confidence Breakdown ── */}
+            {/* Individual Detector Scores */}
             <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold">
-                  SIGNAL AGREEMENT & CONFIDENCE
+                  INDIVIDUAL DETECTOR SCORES
+                </span>
+                <span className="text-[10px] text-[var(--text-tertiary)]">
+                  {Object.keys(dossier.detectorScores).length} DETECTORS
+                </span>
+              </div>
+
+              {Object.keys(dossier.detectorScores).length === 0 ? (
+                <div className="p-2 text-[11px] text-[var(--text-tertiary)] bg-[var(--surface-3)] rounded-[var(--radius-sm)]">
+                  Individual detector scores unavailable.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {Object.entries(dossier.detectorScores).map(([detector, score]) => (
+                    <div
+                      key={detector}
+                      className="p-2 bg-[var(--surface-3)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] space-y-1"
+                    >
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span
+                          className="text-[var(--text-secondary)] font-mono truncate mr-2"
+                          title={detector}
+                        >
+                          {detector.replace(/_/g, ' ')}
+                        </span>
+                        <span className="text-[var(--accent-primary-light)] font-bold shrink-0">
+                          {Number(score).toFixed(4)}
+                        </span>
+                      </div>
+                      <div className="w-full h-1 bg-[var(--surface-1)] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--accent-primary)] rounded-full"
+                          style={{ width: `${Math.min(100, Math.max(0, Number(score) * 100))}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Component Risk Breakdown (M, T, N, G, S, Gs, C) */}
+            <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold">
+                  COMPONENT RISK BREAKDOWN
+                </span>
+                <span className="text-[10px] text-[var(--text-tertiary)]">
+                  {Object.keys(dossier.componentScores).length} COMPONENTS
+                </span>
+              </div>
+
+              {Object.keys(dossier.componentScores).length === 0 ? (
+                <div className="p-2 text-[11px] text-[var(--text-tertiary)] bg-[var(--surface-3)] rounded-[var(--radius-sm)]">
+                  Component scores unavailable.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(dossier.componentScores).map(([key, score]) => {
+                    const label = COMPONENT_LABELS[key] || key;
+                    return (
+                      <div key={key}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-[var(--text-primary)] uppercase text-[11px]">{label}</span>
+                          <span className="text-[var(--accent-primary-light)] font-semibold">
+                            {Number(score).toFixed(4)}
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-[var(--surface-3)] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--accent-primary)] rounded-full"
+                            style={{ width: `${Math.min(100, Math.max(0, Number(score) * 100))}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Epistemic Confidence Breakdown (D, E, S, Gs, X) */}
+            <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold">
+                  CONFIDENCE BREAKDOWN
                 </span>
                 <span className="text-[10px] text-[var(--text-secondary)]">
-                  {selectedAlert.independent_signal_count} Independent Signals
+                  {dossier.alert.independent_signal_count} Independent Signals
                 </span>
               </div>
 
               <div className="p-2.5 rounded-[var(--radius-sm)] bg-[var(--surface-3)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-secondary)] flex items-start gap-2 font-sans">
                 <Info size={14} className="text-[var(--accent-primary-light)] shrink-0 mt-0.5" />
                 <p>
-                  Confidence reflects evidence quality and agreement; it does not modify the risk score.
+                  Epistemic confidence measures data completeness, evidence agreement, and structural stability. It is determined exclusively by backend scoring.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="p-2 bg-[var(--surface-3)] rounded-[var(--radius-sm)]">
-                  <span className="text-[9px] uppercase text-[var(--text-tertiary)] block">EVIDENCE CATEGORIES</span>
-                  <span className="text-[var(--text-primary)] font-semibold">{selectedAlert.evidence_categories.length} Categories</span>
+              {Object.keys(dossier.confidenceComponents).length === 0 ? (
+                <div className="p-2 text-[11px] text-[var(--text-tertiary)] bg-[var(--surface-3)] rounded-[var(--radius-sm)]">
+                  Confidence component breakdown unavailable.
                 </div>
-                <div className="p-2 bg-[var(--surface-3)] rounded-[var(--radius-sm)]">
-                  <span className="text-[9px] uppercase text-[var(--text-tertiary)] block">CROSS-AGREEMENT</span>
-                  <span className="text-[var(--accent-primary-light)] font-semibold">Consensus Validated</span>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  {Object.entries(dossier.confidenceComponents).map(([key, score]) => {
+                    const label = CONFIDENCE_LABELS[key] || key;
+                    return (
+                      <div key={key} className="p-2 bg-[var(--surface-3)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
+                        <span className="text-[9px] uppercase text-[var(--text-tertiary)] block truncate" title={label}>
+                          {label}
+                        </span>
+                        <span className="text-[var(--accent-primary-light)] font-semibold">
+                          {(Number(score) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* ── Graph Preview & Actions ── */}
-            <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-3">
+            {/* Graph Evidence & Topology */}
+            <div className="p-3.5 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)] font-bold">
-                  SUBGRAPH TOPOLOGY PREVIEW
+                  GRAPH EVIDENCE & TOPOLOGY
                 </span>
-                <Link href="/graph">
-                  <span className="text-[10px] text-[var(--accent-primary-light)] hover:underline flex items-center gap-1">
-                    <span>VIEW IN GRAPH</span>
-                    <ExternalLink size={10} />
-                  </span>
-                </Link>
+                <span className="text-[10px] text-[var(--text-tertiary)]">
+                  {dossier.graphEvidence && Object.keys(dossier.graphEvidence).length > 0 ? 'OBSERVED' : 'UNAVAILABLE'}
+                </span>
               </div>
 
-              {/* Subgraph preview box */}
-              <div className="h-24 bg-[var(--bg-primary)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] flex items-center justify-center relative overflow-hidden bg-grid-subtle">
-                <svg className="w-full h-full" viewBox="0 0 240 80" fill="none">
-                  <line x1="40" y1="40" x2="120" y2="40" stroke="#c8a96b" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <line x1="120" y1="40" x2="200" y2="40" stroke="#282828" strokeWidth="1.5" />
-
-                  {/* Address Circle */}
-                  <circle cx="40" cy="40" r="10" fill="#141414" stroke="#383838" strokeWidth="1.5" />
-                  <circle cx="40" cy="40" r="2.5" fill="#a3a09a" />
-
-                  {/* Critical TX Diamond */}
-                  <polygon points="120,28 132,40 120,52 108,40" fill="#181818" stroke="#cf4c4c" strokeWidth="1.5" />
-                  <circle cx="120" cy="40" r="2" fill="#cf4c4c" />
-
-                  {/* Output Address */}
-                  <circle cx="200" cy="40" r="10" fill="#141414" stroke="#383838" strokeWidth="1.5" />
-                  <circle cx="200" cy="40" r="2.5" fill="#a3a09a" />
-                </svg>
-                <div className="absolute top-1.5 left-2 text-[9px] font-mono text-[var(--accent-primary-light)]">
-                  ASSOCIATED CLUSTER: CLUSTER-84-ALPHA
+              {dossier.graphEvidence && Object.keys(dossier.graphEvidence).length > 0 ? (
+                <div className="p-2.5 rounded-[var(--radius-sm)] bg-[var(--surface-3)] border border-[var(--border-subtle)] space-y-2 text-[11px]">
+                  {Object.entries(dossier.graphEvidence).map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between border-b border-[var(--border-subtle)] last:border-none pb-1 last:pb-0">
+                      <span className="text-[var(--text-secondary)] uppercase">{k.replace(/_/g, ' ')}</span>
+                      <span className="text-[var(--text-primary)] font-mono">
+                        {typeof v === 'number'
+                          ? Number(v).toFixed(4)
+                          : typeof v === 'object'
+                          ? JSON.stringify(v)
+                          : String(v)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              ) : (
+                <div className="p-2.5 rounded-[var(--radius-sm)] bg-[var(--surface-3)] border border-[var(--border-subtle)] text-[11px] text-[var(--text-tertiary)]">
+                  Graph evidence unavailable for this alert.
+                </div>
+              )}
             </div>
 
-            {/* ── Investigation Action Buttons ── */}
-            <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Link href="/transactions">
-                  <Button variant="secondary" size="sm">
-                    <ArrowLeftRight size={13} />
-                    <span>View Transaction</span>
-                  </Button>
-                </Link>
-                <Link href="/graph">
-                  <Button variant="primary" size="sm">
-                    <GitBranch size={13} />
-                    <span>View in Graph</span>
-                  </Button>
-                </Link>
-              </div>
-
-              <Button variant="accent" size="sm" onClick={() => setSelectedAlert(null)}>
+            {/* Dossier Footer Action */}
+            <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-end">
+              <Button variant="accent" size="sm" onClick={handleCloseDossier}>
                 <span>Close Dossier</span>
               </Button>
             </div>

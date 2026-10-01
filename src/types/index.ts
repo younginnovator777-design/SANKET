@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // SANKET — Core Type Definitions
 // System for Anomaly & Network Knowledge Extraction from Transactions
 // ============================================================
@@ -227,3 +227,8 @@ export interface CandidateEntity {
   sample_addresses: string[];
   supporting_evidence: string[];
 }
+
+/**
+ * Re-export current-run context types for convenient access across the app.
+ */
+export type { CompactRunMetadata, RunLifecycleStatus, RunContextValue } from '@/context/RunContext';
