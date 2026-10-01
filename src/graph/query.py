@@ -4,7 +4,7 @@ Provides deterministic graph inspection, subgraphs, neighbor queries,
 domain-specific entity resolutions, and graph evidence generation.
 """
 from collections import deque
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Iterable
 
 from src.graph.model import EdgeType, GraphEdge, GraphNode, GraphSnapshot, NodeType
 
