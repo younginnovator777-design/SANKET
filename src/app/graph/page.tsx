@@ -527,12 +527,35 @@ function GraphWorkspaceContent() {
         );
         if (match) {
           setSelectedNodeId(match.id);
+        } else {
+          fetchGraphData(target);
         }
       }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [graphNodes]);
+  }, [graphNodes, fetchGraphData]);
+
+  // Synchronize selected graph node when URL parameter updates
+  useEffect(() => {
+    let isCancelled = false;
+    const syncNodeFromUrl = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      if (initialQuery) {
+        const match = graphNodes.find(
+          (n) => n.id.toLowerCase() === initialQuery.toLowerCase()
+        );
+        if (match && selectedNodeId !== match.id) {
+          setSelectedNodeId(match.id);
+        }
+      }
+    };
+    syncNodeFromUrl();
+    return () => {
+      isCancelled = true;
+    };
+  }, [initialQuery, graphNodes, selectedNodeId]);
 
   // Selected node object
   const selectedNode = useMemo(() => {

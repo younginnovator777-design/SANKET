@@ -141,7 +141,11 @@ function AlertsContent() {
         );
         if (match) {
           setSelectedAlertId(match.alert_id);
+          return;
         }
+      }
+      if (!queryAlertId && !queryTxid) {
+        setSelectedAlertId(null);
       }
     };
     syncQuery();

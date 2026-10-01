@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -58,6 +58,68 @@ function EntitiesContent() {
   });
   const [copiedId, setCopiedId] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  const handleSelectEntity = useCallback((entity: CandidateEntity) => {
+    setSelectedEntity(entity);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('entity', entity.entity_id);
+      window.history.pushState(null, '', url.toString());
+    }
+  }, []);
+
+  const handleCloseDossier = useCallback(() => {
+    setSelectedEntity(null);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('entity');
+      window.history.pushState(null, '', url.toString());
+    }
+  }, []);
+
+  // Synchronize entity selection with URL search parameters
+  useEffect(() => {
+    let isCancelled = false;
+    const syncEntity = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      const target = searchParams.get('entity') || searchParams.get('search');
+      if (target && target.trim()) {
+        const q = target.trim().toLowerCase();
+        const match = mockCandidateEntities.find(
+          (e) => e.entity_id.toLowerCase() === q || e.label.toLowerCase() === q
+        );
+        if (match && selectedEntity?.entity_id !== match.entity_id) {
+          setSelectedEntity(match);
+        }
+      } else {
+        setSelectedEntity(null);
+      }
+    };
+    syncEntity();
+    return () => {
+      isCancelled = true;
+    };
+  }, [searchParams, selectedEntity]);
+
+  // Support browser Back/Forward navigation
+  useEffect(() => {
+    const onPopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const target = sp.get('entity') || sp.get('search');
+      if (target && target.trim()) {
+        const q = target.trim().toLowerCase();
+        const match = mockCandidateEntities.find(
+          (e) => e.entity_id.toLowerCase() === q || e.label.toLowerCase() === q
+        );
+        setSelectedEntity(match || null);
+      } else {
+        setSelectedEntity(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const activeRun = mockRuns[0];
 
@@ -271,7 +333,7 @@ function EntitiesContent() {
               return (
                 <div
                   key={entity.entity_id}
-                  onClick={() => setSelectedEntity(entity)}
+                  onClick={() => handleSelectEntity(entity)}
                   className={`
                     p-5 bg-[var(--surface-1)] border rounded-[var(--radius-md)] cursor-pointer transition-all duration-150
                     ${isSelected
@@ -368,7 +430,7 @@ function EntitiesContent() {
       {/* ── 6. Candidate Entity Investigation Dossier Drawer ── */}
       <Drawer
         isOpen={selectedEntity !== null}
-        onClose={() => setSelectedEntity(null)}
+        onClose={handleCloseDossier}
         title="CANDIDATE ENTITY FORENSIC DOSSIER"
         className="max-w-2xl"
       >
@@ -536,7 +598,7 @@ function EntitiesContent() {
                 </Link>
               </div>
 
-              <Button variant="ghost" size="sm" onClick={() => setSelectedEntity(null)}>
+              <Button variant="ghost" size="sm" onClick={handleCloseDossier}>
                 <span>CLOSE DOSSIER</span>
               </Button>
             </div>

@@ -175,7 +175,9 @@ function getDetectorEvidenceDescription(
 
 function TransactionsContent() {
   const searchParams = useSearchParams();
-  const initialQuery = searchParams.get('search') || searchParams.get('txid') || '';
+  const queryTxid = searchParams.get('txid');
+  const querySearch = searchParams.get('search');
+  const initialQuery = querySearch || queryTxid || '';
 
   const { runId, currentRun, isHydrated } = useRun();
   const [activeRunId, setActiveRunId] = useState<string | null>(runId);
@@ -388,6 +390,41 @@ function TransactionsContent() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [transactions, activeRunId, handleExactLookup]);
+
+  // Synchronize selected transaction when URL query parameter updates or is removed
+  useEffect(() => {
+    let isCancelled = false;
+    const syncWithUrl = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      const target = queryTxid || querySearch;
+      if (target && target.trim()) {
+        const tid = target.trim().toLowerCase();
+        if (selectedTx?.txid.toLowerCase() === tid && selectedTxDetail) {
+          return;
+        }
+        const match = transactions.find((t) => t.txid.toLowerCase() === tid);
+        if (match) {
+          setSelectedTx(match);
+          apiClient
+            .getTransaction(match.txid, activeRunId || undefined)
+            .then((d) => {
+              if (!isCancelled) setSelectedTxDetail(d);
+            })
+            .catch(() => {});
+        } else if (activeRunId && transactions.length > 0) {
+          handleExactLookup(target.trim());
+        }
+      } else {
+        setSelectedTx(null);
+        setSelectedTxDetail(null);
+      }
+    };
+    syncWithUrl();
+    return () => {
+      isCancelled = true;
+    };
+  }, [queryTxid, querySearch, transactions, activeRunId, handleExactLookup, selectedTx, selectedTxDetail]);
 
   // Derive unique detectors & ASNs from real transactions
   const allDetectors = useMemo(() => {
