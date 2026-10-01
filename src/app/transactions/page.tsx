@@ -227,16 +227,14 @@ function TransactionsContent() {
       const alertsRes = await apiClient.getAlerts({ run_id: effectiveRunId });
       const alertsList = alertsRes?.alerts || [];
 
-      // Collect unique transaction IDs from alerts
+      // Collect unique transaction IDs from alerts, prioritizing initial query (e.g. from alert dossier link)
       const txidSet = new Set<string>();
-      alertsList.forEach((a) => {
-        if (a.transaction_id) txidSet.add(a.transaction_id);
-      });
-
-      // If an initialQuery is present (e.g. from alert link or query param), ensure it's included
       if (initialQuery && initialQuery.trim()) {
         txidSet.add(initialQuery.trim());
       }
+      alertsList.forEach((a) => {
+        if (a.transaction_id) txidSet.add(a.transaction_id);
+      });
 
       const txidsToFetch = Array.from(txidSet).slice(0, 100);
 
@@ -320,11 +318,12 @@ function TransactionsContent() {
   // Exact lookup handler for search query not in local list
   const handleExactLookup = useCallback(
     async (txidToFind: string) => {
-      if (!txidToFind || !activeRunId) return;
+      const currentRunId = activeRunId || runId;
+      if (!txidToFind || !currentRunId) return;
       setLookupLoading(true);
       setError(null);
       try {
-        const detail = await apiClient.getTransaction(txidToFind, activeRunId);
+        const detail = await apiClient.getTransaction(txidToFind, currentRunId);
         const adapted = adaptTransactionDetail(detail);
         setTransactions((prev) => {
           const exists = prev.some((t) => t.txid === adapted.txid);
@@ -336,13 +335,13 @@ function TransactionsContent() {
         const msg =
           err instanceof ApiError
             ? err.detail
-            : `Transaction '${txidToFind}' not found in active analysis run '${activeRunId}'.`;
+            : `Transaction '${txidToFind}' not found in active analysis run '${currentRunId}'.`;
         setError(msg);
       } finally {
         setLookupLoading(false);
       }
     },
-    [activeRunId]
+    [activeRunId, runId]
   );
 
   const handleSelectTx = useCallback(
@@ -355,13 +354,13 @@ function TransactionsContent() {
         window.history.pushState(null, '', url.toString());
       }
       try {
-        const detail = await apiClient.getTransaction(tx.txid, activeRunId || undefined);
+        const detail = await apiClient.getTransaction(tx.txid, activeRunId || runId || undefined);
         setSelectedTxDetail(detail);
       } catch (err) {
         console.warn('[Transactions] Could not fetch detailed record for', tx.txid, err);
       }
     },
-    [activeRunId]
+    [activeRunId, runId]
   );
 
   // Support browser Back/Forward navigation to preserve selected transaction

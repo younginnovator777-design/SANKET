@@ -115,8 +115,19 @@ function AlertsContent() {
       if (runId) {
         fetchAlerts(runId);
       } else {
-        setLoading(false);
-        setAlerts([]);
+        try {
+          const latest = await apiClient.getLatestRun();
+          if (!isCancelled && latest?.run_id) {
+            fetchAlerts(latest.run_id);
+            return;
+          }
+        } catch {
+          // No active run on backend
+        }
+        if (!isCancelled) {
+          setLoading(false);
+          setAlerts([]);
+        }
       }
     };
     init();
@@ -187,7 +198,16 @@ function AlertsContent() {
       setDossierError(null);
       setDossierLoading(true);
       try {
-        const detail = await apiClient.getAlert(alertId, activeRunId || undefined);
+        let effRunId = activeRunId;
+        if (!effRunId) {
+          try {
+            const latest = await apiClient.getLatestRun();
+            effRunId = latest?.run_id;
+          } catch {
+            // No active run
+          }
+        }
+        const detail = await apiClient.getAlert(alertId, effRunId || undefined);
         setDossier(adaptApiAlertDetail(detail));
       } catch (err: unknown) {
         const msg =
