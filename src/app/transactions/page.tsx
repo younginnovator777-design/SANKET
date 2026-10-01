@@ -316,34 +316,42 @@ function TransactionsContent() {
   }, [isHydrated, loadTransactions]);
 
   // Exact lookup handler for search query not in local list
-  const handleExactLookup = async (txidToFind: string) => {
-    if (!txidToFind || !activeRunId) return;
-    setLookupLoading(true);
-    setError(null);
-    try {
-      const detail = await apiClient.getTransaction(txidToFind, activeRunId);
-      const adapted = adaptTransactionDetail(detail);
-      setTransactions((prev) => {
-        const exists = prev.some((t) => t.txid === adapted.txid);
-        return exists ? prev : [adapted, ...prev];
-      });
-      setSelectedTx(adapted);
-      setSelectedTxDetail(detail);
-    } catch (err: unknown) {
-      const msg =
-        err instanceof ApiError
-          ? err.detail
-          : `Transaction '${txidToFind}' not found in active analysis run '${activeRunId}'.`;
-      setError(msg);
-    } finally {
-      setLookupLoading(false);
-    }
-  };
+  const handleExactLookup = useCallback(
+    async (txidToFind: string) => {
+      if (!txidToFind || !activeRunId) return;
+      setLookupLoading(true);
+      setError(null);
+      try {
+        const detail = await apiClient.getTransaction(txidToFind, activeRunId);
+        const adapted = adaptTransactionDetail(detail);
+        setTransactions((prev) => {
+          const exists = prev.some((t) => t.txid === adapted.txid);
+          return exists ? prev : [adapted, ...prev];
+        });
+        setSelectedTx(adapted);
+        setSelectedTxDetail(detail);
+      } catch (err: unknown) {
+        const msg =
+          err instanceof ApiError
+            ? err.detail
+            : `Transaction '${txidToFind}' not found in active analysis run '${activeRunId}'.`;
+        setError(msg);
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [activeRunId]
+  );
 
   const handleSelectTx = useCallback(
     async (tx: UiTransactionRecord) => {
       setSelectedTx(tx);
       setSelectedTxDetail(null);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('txid', tx.txid);
+        window.history.pushState(null, '', url.toString());
+      }
       try {
         const detail = await apiClient.getTransaction(tx.txid, activeRunId || undefined);
         setSelectedTxDetail(detail);
@@ -353,6 +361,33 @@ function TransactionsContent() {
     },
     [activeRunId]
   );
+
+  // Support browser Back/Forward navigation to preserve selected transaction
+  useEffect(() => {
+    const onPopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const tid = sp.get('txid') || sp.get('search');
+      if (tid) {
+        const match = transactions.find(
+          (t) => t.txid.toLowerCase() === tid.toLowerCase()
+        );
+        if (match) {
+          setSelectedTx(match);
+          apiClient
+            .getTransaction(match.txid, activeRunId || undefined)
+            .then(setSelectedTxDetail)
+            .catch(() => {});
+        } else {
+          handleExactLookup(tid);
+        }
+      } else {
+        setSelectedTx(null);
+        setSelectedTxDetail(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [transactions, activeRunId, handleExactLookup]);
 
   // Derive unique detectors & ASNs from real transactions
   const allDetectors = useMemo(() => {
@@ -1108,7 +1143,16 @@ function TransactionsContent() {
             {/* ── 9. Forensic Action CTAs ── */}
             <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Link href={`/alerts?search=${encodeURIComponent(selectedTx.txid)}`}>
+                <Link
+                  href={
+                    selectedTxDetail?.alert &&
+                    typeof (selectedTxDetail.alert as Record<string, unknown>).alert_id === 'string'
+                      ? `/alerts?alert_id=${encodeURIComponent(
+                          String((selectedTxDetail.alert as Record<string, unknown>).alert_id)
+                        )}`
+                      : `/alerts?txid=${encodeURIComponent(selectedTx.txid)}`
+                  }
+                >
                   <Button variant="primary" size="sm">
                     <ShieldAlert size={13} />
                     <span>VIEW ALERT</span>
@@ -1134,6 +1178,11 @@ function TransactionsContent() {
                 onClick={() => {
                   setSelectedTx(null);
                   setSelectedTxDetail(null);
+                  if (typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('txid');
+                    window.history.pushState(null, '', url.toString());
+                  }
                 }}
               >
                 <span>CLOSE DOSSIER</span>

@@ -498,6 +498,42 @@ function GraphWorkspaceContent() {
     };
   }, [isHydrated, fetchGraphData]);
 
+  const handleSelectNode = useCallback((nodeId: string, nodeType?: string) => {
+    setSelectedNodeId(nodeId);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (nodeType === 'TRANSACTION') {
+        url.searchParams.set('txid', nodeId);
+        url.searchParams.delete('node');
+      } else {
+        url.searchParams.set('node', nodeId);
+      }
+      window.history.pushState(null, '', url.toString());
+    }
+  }, []);
+
+  // Support browser Back/Forward navigation to preserve selected graph node
+  useEffect(() => {
+    const onPopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const target =
+        sp.get('txid') ||
+        sp.get('node') ||
+        sp.get('entity') ||
+        sp.get('search');
+      if (target) {
+        const match = graphNodes.find(
+          (n) => n.id.toLowerCase() === target.toLowerCase()
+        );
+        if (match) {
+          setSelectedNodeId(match.id);
+        }
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [graphNodes]);
+
   // Selected node object
   const selectedNode = useMemo(() => {
     return graphNodes.find((n) => n.id === selectedNodeId) || graphNodes[0] || null;
@@ -960,7 +996,7 @@ function GraphWorkspaceContent() {
                       return (
                         <g
                           key={node.id}
-                          onClick={() => setSelectedNodeId(node.id)}
+                          onClick={() => handleSelectNode(node.id, node.type)}
                           className="cursor-pointer transition-opacity duration-150"
                           opacity={isDimmed ? 0.3 : 1}
                         >
@@ -1283,7 +1319,7 @@ function GraphWorkspaceContent() {
                         {relatedNeighborNodes.map((neighbor) => (
                           <button
                             key={neighbor.id}
-                            onClick={() => setSelectedNodeId(neighbor.id)}
+                            onClick={() => handleSelectNode(neighbor.id, neighbor.type)}
                             className="w-full p-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] rounded-[var(--radius-xs)] flex items-center justify-between text-left transition-colors cursor-pointer"
                           >
                             <div className="overflow-hidden pr-2">
@@ -1329,7 +1365,11 @@ function GraphWorkspaceContent() {
 
                   <div className="grid grid-cols-2 gap-2">
                     <Link
-                      href={`/transactions?search=${encodeURIComponent(selectedNode.id)}`}
+                      href={
+                        selectedNode.type === 'TRANSACTION'
+                          ? `/transactions?txid=${encodeURIComponent(selectedNode.id)}`
+                          : `/transactions?search=${encodeURIComponent(selectedNode.id)}`
+                      }
                       className="w-full"
                     >
                       <Button variant="secondary" size="sm" className="w-full justify-center text-[11px]">
@@ -1338,7 +1378,11 @@ function GraphWorkspaceContent() {
                       </Button>
                     </Link>
                     <Link
-                      href={`/alerts?search=${encodeURIComponent(selectedNode.id)}`}
+                      href={
+                        selectedNode.type === 'TRANSACTION'
+                          ? `/alerts?txid=${encodeURIComponent(selectedNode.id)}`
+                          : `/alerts?search=${encodeURIComponent(selectedNode.id)}`
+                      }
                       className="w-full"
                     >
                       <Button variant="secondary" size="sm" className="w-full justify-center text-[11px]">

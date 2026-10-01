@@ -1051,7 +1051,12 @@ export default function AnalyzePage() {
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-[var(--text-primary)]">#{alert.rank}</span>
-                              <span className="text-[var(--accent-primary-light)]">{alert.alert_id}</span>
+                              <Link
+                                href={`/alerts?alert_id=${encodeURIComponent(alert.alert_id)}`}
+                                className="text-[var(--accent-primary-light)] hover:underline"
+                              >
+                                {alert.alert_id}
+                              </Link>
                               <RiskBadge level={alert.risk_level} size="sm" />
                               <span className="text-[10px] text-[var(--text-tertiary)]">
                                 Score: {(alert.risk_score * 100).toFixed(0)}%
@@ -1073,8 +1078,8 @@ export default function AnalyzePage() {
                                 </span>
                               ))}
                             </div>
-                            <Link href={`/transactions?search=${encodeURIComponent(alert.transaction_id)}`}>
-                              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]">
+                            <Link href={`/transactions?txid=${encodeURIComponent(alert.transaction_id)}`}>
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" title="View Transaction">
                                 <ExternalLink size={11} />
                               </Button>
                             </Link>

@@ -65,13 +65,22 @@ export default function OverviewPage() {
 
   useEffect(() => {
     if (!isHydrated) return;
-    if (runId) {
-      fetchRunData(runId);
-    } else {
-      setLoading(false);
-      setSummary(null);
-      setAlerts([]);
-    }
+    let isCancelled = false;
+    const init = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      if (runId) {
+        fetchRunData(runId);
+      } else {
+        setLoading(false);
+        setSummary(null);
+        setAlerts([]);
+      }
+    };
+    init();
+    return () => {
+      isCancelled = true;
+    };
   }, [runId, isHydrated, fetchRunData]);
 
   // Detector Activity breakdown from real triggered detectors across alerts
@@ -765,7 +774,7 @@ export default function OverviewPage() {
               <Button variant="ghost" size="sm" onClick={() => setSelectedAlert(null)}>
                 <span>Dismiss</span>
               </Button>
-              <Link href="/alerts">
+              <Link href={`/alerts?alert_id=${encodeURIComponent(selectedAlert.alert_id)}`}>
                 <Button variant="accent" size="sm">
                   <span>Full Investigation Lead</span>
                   <ExternalLink size={13} />

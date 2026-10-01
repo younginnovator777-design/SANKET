@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   ShieldAlert,
   Search,
@@ -35,6 +36,7 @@ import {
   EmptyState,
   DataTable,
   Column,
+  LoadingState,
 } from '@/components/ui';
 import { useRun } from '@/context/RunContext';
 import {
@@ -65,15 +67,20 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   X: 'X (Explanation Consistency)',
 };
 
-export default function AlertsPage() {
+function AlertsContent() {
+  const searchParams = useSearchParams();
+  const queryAlertId = searchParams.get('alert_id') || searchParams.get('lead_id') || '';
+  const queryTxid = searchParams.get('txid') || '';
+  const querySearch = searchParams.get('search') || '';
+
   const { runId, currentRun, isHydrated } = useRun();
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(querySearch || queryTxid || '');
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<RiskFilterOption>('ALL');
   const [selectedDetector, setSelectedDetector] = useState<string>('ALL');
-  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(queryAlertId || null);
   const [dossier, setDossier] = useState<ReturnType<typeof adaptApiAlertDetail> | null>(null);
   const [dossierLoading, setDossierLoading] = useState<boolean>(false);
   const [dossierError, setDossierError] = useState<string | null>(null);
@@ -101,13 +108,72 @@ export default function AlertsPage() {
 
   useEffect(() => {
     if (!isHydrated) return;
-    if (runId) {
-      fetchAlerts(runId);
-    } else {
-      setLoading(false);
-      setAlerts([]);
-    }
+    let isCancelled = false;
+    const init = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      if (runId) {
+        fetchAlerts(runId);
+      } else {
+        setLoading(false);
+        setAlerts([]);
+      }
+    };
+    init();
+    return () => {
+      isCancelled = true;
+    };
   }, [runId, isHydrated, fetchAlerts]);
+
+  // Synchronize alert selection with query parameters on load or URL changes
+  useEffect(() => {
+    let isCancelled = false;
+    const syncQuery = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      if (queryAlertId) {
+        setSelectedAlertId(queryAlertId);
+        return;
+      }
+      if (queryTxid && alerts.length > 0) {
+        const match = alerts.find(
+          (a) => a.transaction_id.toLowerCase() === queryTxid.toLowerCase()
+        );
+        if (match) {
+          setSelectedAlertId(match.alert_id);
+        }
+      }
+    };
+    syncQuery();
+    return () => {
+      isCancelled = true;
+    };
+  }, [queryAlertId, queryTxid, alerts]);
+
+  // Support browser Back/Forward navigation between dossier states
+  useEffect(() => {
+    const onPopState = () => {
+      const sp = new URLSearchParams(window.location.search);
+      const aid = sp.get('alert_id') || sp.get('lead_id');
+      const tid = sp.get('txid');
+      if (aid) {
+        setSelectedAlertId(aid);
+      } else if (tid && alerts.length > 0) {
+        const match = alerts.find(
+          (a) => a.transaction_id.toLowerCase() === tid.toLowerCase()
+        );
+        if (match) {
+          setSelectedAlertId(match.alert_id);
+        } else {
+          setSelectedAlertId(null);
+        }
+      } else {
+        setSelectedAlertId(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [alerts]);
 
   // Retrieve canonical investigation dossier for selected alert from backend
   const fetchDossier = useCallback(
@@ -135,19 +201,45 @@ export default function AlertsPage() {
   );
 
   useEffect(() => {
-    if (!selectedAlertId) {
-      setDossier(null);
-      setDossierError(null);
-      setDossierLoading(false);
-      return;
-    }
-    fetchDossier(selectedAlertId, runId);
+    let isCancelled = false;
+    const initDossier = async () => {
+      await Promise.resolve();
+      if (isCancelled) return;
+      if (!selectedAlertId) {
+        setDossier(null);
+        setDossierError(null);
+        setDossierLoading(false);
+        return;
+      }
+      fetchDossier(selectedAlertId, runId);
+    };
+    initDossier();
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedAlertId, runId, fetchDossier]);
+
+  const handleSelectAlert = (alertId: string) => {
+    setSelectedAlertId(alertId);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('alert_id', alertId);
+      url.searchParams.delete('txid');
+      window.history.pushState(null, '', url.toString());
+    }
+  };
 
   const handleCloseDossier = () => {
     setSelectedAlertId(null);
     setDossier(null);
     setDossierError(null);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('alert_id');
+      url.searchParams.delete('lead_id');
+      url.searchParams.delete('txid');
+      window.history.pushState(null, '', url.toString());
+    }
   };
 
   // Derive unique detectors from real backend alerts
@@ -557,7 +649,7 @@ export default function AlertsPage() {
               columns={columns}
               data={filteredAlerts}
               keyExtractor={(item) => item.alert_id}
-              onRowClick={(item) => setSelectedAlertId(item.alert_id)}
+              onRowClick={(item) => handleSelectAlert(item.alert_id)}
             />
           </div>
         )}
@@ -629,13 +721,23 @@ export default function AlertsPage() {
                   <span className="text-xs text-[var(--accent-primary-light)] break-all font-semibold select-all">
                     {dossier.alert.transaction_id}
                   </span>
-                  <button
-                    onClick={() => handleCopyTx(dossier.alert.transaction_id)}
-                    className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
-                    title="Copy TXID"
-                  >
-                    {copiedTx ? <Check size={14} className="text-[var(--risk-low)]" /> : <Copy size={14} />}
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={() => handleCopyTx(dossier.alert.transaction_id)}
+                      className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                      title="Copy TXID"
+                    >
+                      {copiedTx ? <Check size={14} className="text-[var(--risk-low)]" /> : <Copy size={14} />}
+                    </button>
+                    <Link
+                      href={`/transactions?txid=${encodeURIComponent(dossier.alert.transaction_id)}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-xs)] bg-[var(--surface-2)] hover:bg-[var(--surface-1)] text-[10px] text-[var(--accent-primary-light)] border border-[var(--border-subtle)] transition-colors"
+                      title="View Transaction"
+                    >
+                      <span>Tx</span>
+                      <ArrowRight size={11} />
+                    </Link>
+                  </div>
                 </div>
               </div>
 
@@ -878,8 +980,22 @@ export default function AlertsPage() {
             </div>
 
             {/* Dossier Footer Action */}
-            <div className="pt-3 border-t border-[var(--border-subtle)] flex items-center justify-end">
-              <Button variant="accent" size="sm" onClick={handleCloseDossier}>
+            <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Link href={`/transactions?txid=${encodeURIComponent(dossier.alert.transaction_id)}`}>
+                  <Button variant="primary" size="sm">
+                    <ArrowLeftRight size={13} />
+                    <span>View Transaction</span>
+                  </Button>
+                </Link>
+                <Link href={`/graph?txid=${encodeURIComponent(dossier.alert.transaction_id)}`}>
+                  <Button variant="secondary" size="sm">
+                    <GitBranch size={13} />
+                    <span>View in Graph</span>
+                  </Button>
+                </Link>
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleCloseDossier}>
                 <span>Close Dossier</span>
               </Button>
             </div>
@@ -887,5 +1003,13 @@ export default function AlertsPage() {
         )}
       </Drawer>
     </PageContainer>
+  );
+}
+
+export default function AlertsPage() {
+  return (
+    <Suspense fallback={<LoadingState message="Loading investigative leads..." />}>
+      <AlertsContent />
+    </Suspense>
   );
 }
