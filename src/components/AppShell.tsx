@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { TopHeader } from '@/components/TopHeader';
@@ -13,10 +13,14 @@ interface AppShellProps {
  * The main application shell — sidebar + top header + content area.
  * This wraps all pages in the (app) route group.
  * The landing page (pathname === '/') renders without the shell chrome.
+ *
+ * Sidebar collapse state is owned here so the content area margin
+ * tracks the actual sidebar width — no blank gutter on collapse.
  */
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isLandingPage = pathname === '/';
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Landing page renders full-screen without sidebar/header
   if (isLandingPage) {
@@ -26,16 +30,20 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <Sidebar />
+      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((c) => !c)} />
 
-      {/* Main content area — offset by sidebar width */}
+      {/* Main content area — offset tracks actual sidebar width */}
       <div
-        className="
+        className={`
           flex-1 flex flex-col
-          ml-[var(--sidebar-width)]
           min-h-screen
           transition-[margin] duration-[var(--transition-slow)]
-        "
+        `}
+        style={{
+          marginLeft: sidebarCollapsed
+            ? 'var(--sidebar-collapsed-width)'
+            : 'var(--sidebar-width)',
+        }}
       >
         {/* Top Header */}
         <TopHeader />

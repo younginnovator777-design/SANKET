@@ -35,6 +35,7 @@ import {
 } from '@/components/ui';
 import { mockRuns } from '@/data/mock';
 import { AnalysisRun } from '@/types';
+import { downloadCSV } from '@/lib/export';
 
 // Helper to format duration between ISO timestamps
 function calculateDuration(startStr: string, endStr?: string): string {
@@ -111,7 +112,12 @@ export default function RunsPage() {
               <span>Launch New Analysis</span>
             </Button>
           </Link>
-          <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => {}}>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => downloadCSV(filteredRuns, 'sanket-audit-log.csv')}
+          >
             <Download size={13} />
             <span>Export Audit Log</span>
           </Button>

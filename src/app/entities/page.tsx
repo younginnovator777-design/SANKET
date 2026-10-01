@@ -36,6 +36,7 @@ import {
 } from '@/components/ui';
 import { mockCandidateEntities, mockRuns } from '@/data/mock';
 import { CandidateEntity, RiskLevel } from '@/types';
+import { downloadCSV } from '@/lib/export';
 
 type RiskFilterOption = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM';
 
@@ -191,7 +192,11 @@ function EntitiesContent() {
       icon={<Users size={18} />}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => downloadCSV(filteredEntities, 'sanket-entities.csv')}
+          >
             <Download size={13} />
             <span>Export Entities</span>
           </Button>

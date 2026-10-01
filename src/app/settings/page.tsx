@@ -19,10 +19,25 @@ import {
 } from '@/components/ui';
 
 export default function SettingsPage() {
-  const [thresholdFloor, setThresholdFloor] = useState('0.15');
-  const [minConfidence, setMinConfidence] = useState('0.60');
-  const [modelVersion, setModelVersion] = useState('v2.1.0-airgap-prod');
-  const [airgapEnforce, setAirgapEnforce] = useState(true);
+  // Declared defaults — used for initial state and reset
+  const DEFAULTS = {
+    thresholdFloor: '0.15',
+    minConfidence: '0.60',
+    modelVersion: 'v2.1.0-airgap-prod',
+    airgapEnforce: true,
+  };
+
+  const [thresholdFloor, setThresholdFloor] = useState(DEFAULTS.thresholdFloor);
+  const [minConfidence, setMinConfidence] = useState(DEFAULTS.minConfidence);
+  const [modelVersion, setModelVersion] = useState(DEFAULTS.modelVersion);
+  const [airgapEnforce, setAirgapEnforce] = useState(DEFAULTS.airgapEnforce);
+
+  function handleResetDefaults() {
+    setThresholdFloor(DEFAULTS.thresholdFloor);
+    setMinConfidence(DEFAULTS.minConfidence);
+    setModelVersion(DEFAULTS.modelVersion);
+    setAirgapEnforce(DEFAULTS.airgapEnforce);
+  }
 
   return (
     <PageContainer
@@ -32,7 +47,7 @@ export default function SettingsPage() {
       icon={<SettingsIcon size={18} />}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">
+          <Button variant="secondary" size="sm" onClick={handleResetDefaults}>
             <RotateCcw size={13} />
             <span>Reset Defaults</span>
           </Button>

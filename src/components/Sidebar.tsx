@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -33,9 +32,13 @@ const iconMap: Record<string, React.ElementType> = {
   Settings,
 };
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
 
   const isActive = (href: string) => {
     if (href === '/overview' && pathname === '/') return true;
@@ -192,7 +195,7 @@ export function Sidebar() {
 
         {/* Collapse toggle */}
         <button
-          onClick={() => setCollapsed(!collapsed)}
+          onClick={() => onToggle()}
           className={`
             flex items-center ${collapsed ? 'justify-center' : 'justify-between'}
             w-full px-2.5 py-1.5 rounded-[var(--radius-sm)]

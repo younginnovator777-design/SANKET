@@ -37,6 +37,7 @@ import {
   ApiGraphResponse,
 } from '@/lib/api';
 import { RiskLevel } from '@/types';
+import { downloadJSON } from '@/lib/export';
 
 // ============================================================
 // Forensic Graph UI Types
@@ -677,13 +678,7 @@ function GraphWorkspaceContent() {
       edges: graphEdges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: e.type })),
       exported_at: new Date().toISOString(),
     };
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `graph_${centerNodeId || 'export'}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadJSON(exportData, `graph_${centerNodeId || 'export'}.json`);
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {

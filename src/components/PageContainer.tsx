@@ -24,10 +24,10 @@ export function PageContainer({
   tag,
 }: PageContainerProps) {
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 w-full min-h-0">
       <div className="mx-auto max-w-[var(--page-max-width)] px-[var(--page-padding)] py-6">
         {/* ── Page Header ── */}
-        <div className="flex items-start justify-between pb-6 mb-6 border-b border-[var(--border-subtle)]">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 mb-6 border-b border-[var(--border-subtle)]">
           <div className="flex items-start gap-3.5">
             {icon && (
               <div className="
@@ -56,7 +56,7 @@ export function PageContainer({
               )}
             </div>
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
         </div>
 
         {/* ── Page Content ── */}

@@ -1194,7 +1194,7 @@ function TransactionsContent() {
                     <span>VIEW ALERT</span>
                   </Button>
                 </Link>
-                <Link href="/entities">
+                <Link href={`/entities?search=${encodeURIComponent(selectedTx.txid)}`}>
                   <Button variant="secondary" size="sm">
                     <Boxes size={13} />
                     <span>VIEW CANDIDATE ENTITY</span>

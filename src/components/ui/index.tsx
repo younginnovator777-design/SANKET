@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { RiskLevel, StatusType } from '@/types';
 
 // ============================================================
@@ -576,7 +576,7 @@ export function DataTable<T>({
                 key={col.key}
                 style={{ width: col.width }}
                 className={`
-                  px-3.5 py-2.5
+                  px-3.5 py-2.5 whitespace-nowrap
                   text-[10px] font-mono font-semibold uppercase tracking-[0.1em]
                   text-[var(--text-tertiary)]
                   ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}
@@ -831,16 +831,31 @@ export function Drawer({
   side = 'right',
   className = '',
 }: DrawerProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const sideClasses = side === 'right' ? 'right-0 border-l' : 'left-0 border-r';
+  const hasMaxWidth = /\bmax-w-/.test(className);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#000000]/70">
+    <div
+      className="fixed inset-0 z-50 bg-[#000000]/70 backdrop-blur-xs transition-opacity"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         className={`
           fixed top-0 ${sideClasses}
-          h-full w-full max-w-md
+          h-full w-full ${hasMaxWidth ? '' : 'max-w-md'}
           bg-[var(--surface-1)] border-[var(--border-default)]
           shadow-lg flex flex-col
           ${className}
@@ -855,7 +870,7 @@ export function Drawer({
           </h3>
           <button
             onClick={onClose}
-            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors p-1"
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors p-1 cursor-pointer"
             aria-label="Close drawer"
           >
             ✕

@@ -31,6 +31,7 @@ import {
   RiskBadge,
 } from '@/components/ui';
 import { mockRuns, mockAlerts, mockTransactions } from '@/data/mock';
+import { downloadJSON } from '@/lib/export';
 
 export default function AnalyticsPage() {
   const activeRun = mockRuns[0];
@@ -98,7 +99,34 @@ export default function AnalyticsPage() {
       icon={<BarChart3 size={18} />}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              downloadJSON(
+                {
+                  run_id: activeRun.run_id,
+                  dataset: activeRun.dataset_name,
+                  scoring_version: activeRun.scoring_version,
+                  exported_at: new Date().toISOString(),
+                  model_overview: {
+                    model: 'Isolation Forest (v2.1.0-airgap-prod)',
+                    engine: 'Scikit-Learn Ensemble (Airgapped C-Extension)',
+                    feature_dimensions: 32,
+                    contamination_floor: 0.15,
+                    offline_airgapped: true,
+                  },
+                  detector_families: detectorFamilies.map((f) => ({
+                    family: f.family,
+                    description: f.description,
+                    detectors: f.detectors,
+                  })),
+                  feature_groups: featureGroups,
+                },
+                'sanket-model-metrics.json'
+              )
+            }
+          >
             <Download size={13} />
             <span>Export Model Metrics</span>
           </Button>
